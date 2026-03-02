@@ -1,0 +1,66 @@
+Original prompt: سويلي لعبة اول مادخل الهة اشوف مستطيل و مكتوب عليه مهنة مدرب مستطيل لونة مميز و ملمسة جميل من ادخل علية تطلع لي دوريات 5 الكبرى و اختار دوري و تطلع لي فرق الدوري الي اخترتة الفرق كاملة و من اختار فريق تفتح لي شاشة يوجد تحت الشاشة شريط فيه ثلاث ازرار واحد محاكي و واحد الفريق و واحد الادارة من اضغط على المحاكي تطلع لي المباراة التالية و مباراة السابقة و تحت ترتيب فريقي بلدوري و على اليمين وسط الشاشة زر لونة مميز اضغط علية تفتح لي شاشة فيها اشرطة و كل شريط بطولة معينة مثل دوري الابطال و دوري الاوربي و كاس العالم يكون فيه منتخبات شريط دوري الابطال يكون لون ازرق و لمعان و شريط دوري الاوربي يكون برتقالي و لمعان و شريط كاس العالم خلي ذهبي و مميز عن البقية
+
+- Implemented: Replaced ContentView with Arabic football-coach game flow (welcome, leagues, teams, dashboard).
+- Implemented: Added bottom tab bar with محاكي/الفريق/الإدارة and per-tab content.
+- Implemented: Added right-side highlighted بطولات button opening competition bars screen (blue/orange/gold glow).
+- Note: App currently uses static match/rank calculations based on selected league/team index.
+- TODO: Optionally add persistence for selected team and richer simulation logic.
+- Validation: xcodebuild succeeded with `CODE_SIGNING_ALLOWED=NO` using project `/Users/mustafaraad/Desktop/coach/coach/coach.xcodeproj` and scheme `coach`.
+- Note: Build required unrestricted run in this environment because sandboxed Swift macro/plugin execution failed.
+- Implemented: Added full season simulation loop (weekly matches, dynamic previous/next match, live points table, rank calculation).
+- Implemented: Added management systems (budget changes by results, fan satisfaction, transfers market with purchasable players, squad strength boosts).
+- Implemented: Expanded team tab with dynamic season stats (W/D/L, GF/GA, injuries, squad strength).
+- Validation: Build succeeded after update with `xcodebuild ... CODE_SIGNING_ALLOWED=NO build`.
+- Implemented: Simulator screen redesigned to remove large cards; kept main green play button and moved red بطولات button only to simulator screen.
+- Implemented: Added team badge next to team name in dashboard header.
+- Implemented: Added monthly team calendar with highlighted match days and month fixtures list; current in-game day advances after each played match.
+- Implemented: Added full-screen interactive Match Center: vertical pitch, 11 starters on field, bench players, lineup button, substitutions, fast 90-minute timer, and live scorer/assist events.
+- Validation: Final build succeeded with `xcodebuild -project /Users/mustafaraad/Desktop/coach/coach/coach.xcodeproj -scheme coach -destination 'generic/platform=iOS' -derivedDataPath /tmp/coach-derived CODE_SIGNING_ALLOWED=NO build`.
+- Implemented: Team tab now shows all squad players as square cards (avatar + name + number/role).
+- Implemented: Added `سجل الفريق` button in team tab opening a dedicated stats screen with wins, losses, draws, titles, goals for, and goals conceded in a clean grid layout.
+- Validation: Build succeeded after these changes.
+- Implemented: Management tab now includes a top contract/budget card with remaining coach-contract days and a green animated money sticker.
+- Implemented: Added player search flow in management tab (search by name + direct signing if budget allows).
+- Note: Build re-validation was not run in this step because unrestricted build command was rejected.
+- Implemented: Added standalone web game in `/Users/mustafaraad/Desktop/coach/coach/coach/web-game` (`index.html`, `style.css`, `game.js`) as Arabic nation-building gameplay with single-canvas UI.
+- Implemented: Added required automation hooks `window.render_game_to_text` and `window.advanceTime(ms)`, plus fullscreen toggle with `f` and exit with `Esc`.
+- Implemented: Added playable loop (menu -> gameplay -> game over), build actions, map placement, economy/day simulation, random events, and restart flow.
+- Pending: Run `$WEB_GAME_CLIENT` Playwright loop and iterate visuals/controls based on screenshots and state output.
+- Implemented: Rebuilt `/web-game` into an Arabic football match game (menu, live match, timer, scoreline, goalkeeper AI, shots/goals, rival counter attacks, and match-end screen).
+- Implemented: Updated web game metadata/styles to football theme (`index.html`, `style.css`).
+- Implemented: Kept required hooks for automation (`window.render_game_to_text`, `window.advanceTime(ms)`) and fullscreen controls (`f`/`Esc`).
+- Pending: Run Playwright loop on the new football gameplay, inspect screenshot/state output, and fix any issues.
+- Validation note: Playwright loop could not be executed because `node`/`npx` are not installed in this environment.
+- Runtime note: Started a local HTTP server for `/web-game` on port `8080` using escalated permissions to provide an immediate browser link.
+- Implemented: Created a new shareable web build in `/Users/mustafaraad/Desktop/coach/coach/coach/web-game` (`index.html`, `style.css`, `game.js`) matching the Arabic coach game flow.
+- Implemented: Added monthly calendar with month switching arrows, day-simulator button, fixture markers on calendar cells, and month fixture list.
+- Implemented: Added tabs (محاكي/الفريق/الإدارة), team record modal, competitions modal, match-center modal with fast minute simulation + live events, management player search/signing, and animated money sticker.
+- Implemented: Exposed `window.render_game_to_text` and `window.advanceTime(ms)` hooks; kept fullscreen toggle (`f`/`Esc`).
+- Validation note: Local HTTP server launched on port 8080 using elevated permissions (`python3 -m http.server 8080`) because sandbox blocks socket binding.
+- Limitation: No deployment CLI (`vercel`, `netlify`, `gh`, `firebase`) and no Node (`npx`) in this environment, so public internet URL was not auto-created from the terminal.
+- Implemented: Replaced welcome-screen static league ranking with live real-world team standings table (per league) using TheSportsDB API.
+- Implemented: Added league selector for top-5 leagues, live refresh button, auto-load on league switch, team badges, full stats columns, and last-5 form circles.
+- Validation: iOS build succeeded after these changes using `xcodebuild -project STACOACH.xcodeproj -scheme STACOACH -destination 'generic/platform=iOS Simulator' -quiet build` (unrestricted run).
+- Enhancement: Added periodic auto-refresh for live standings every 5 minutes while the welcome screen is open, in addition to manual refresh and league-switch reload.
+- Enhancement: Added API fallback keys (`3` then `123`) for TheSportsDB lookup table endpoint to improve reliability.
+- Implemented: Competitions screen now includes real-time UEFA Champions League data (live table + upcoming fixtures + recent results) from TheSportsDB.
+- Implemented: Added UCL auto-refresh every 5 minutes and manual refresh button inside the competitions sheet.
+- Validation: Build succeeded after UCL live integration using `xcodebuild -project STACOACH.xcodeproj -scheme STACOACH -destination 'generic/platform=iOS Simulator' -quiet build` (unrestricted run).
+- Fix: Resolved Champions League tab issue in welcome live table by adding multi-season standings queries and robust fallback computation from real UCL past results when table endpoint returns empty.
+- Fix: Improved league-switch behavior by clearing stale table rows while loading a different selected league.
+- Validation: Build succeeded after Champions League fix using unrestricted xcodebuild run.
+- Fix: Hardened all live league/UCL fetchers against non-JSON and transient API errors by making each endpoint attempt non-fatal (`try?` per attempt) and continuing across keys/seasons.
+- Fix: Removed top-level failure path that caused Champions League tab to show a hard internet error when one endpoint parse failed; now it gracefully falls back (including computed table from past UCL results in welcome view).
+- Validation: Build succeeded after these resilience fixes.
+- Fix: Added resilient local fallback standings for all live tabs (including Champions League) so the table always opens even when live API returns empty.
+- UX: When fallback is shown, user now sees a clear temporary-data message instead of hard failure.
+- Validation: Build succeeded after fallback-table fix.
+- Web fix request: User asked the shared web page to show the complete game (not a reduced prototype).
+- Implemented: Replaced `/play.html` with a full multi-screen web game flow matching the app structure: welcome -> league selection -> team selection -> dashboard.
+- Implemented: Added full dashboard tabs (`محاكي` / `الفريق` / `الإدارة`) with: next/previous match, real calendar month grid + month switching, day simulation, match play, competitions modal, team players grid, team record modal, management contract card, transfer cards, player search, and contract negotiation modal.
+- Implemented: Added full match center modal with tactical formation positions, fast-minute simulation, event log, lineup/bench selection, and player swap system.
+- Implemented: Added full season logic in web version: standings table updates, rank calculation, budget/fan updates, injuries, awards/achievements, top scorer tracking, and end-of-season rewards.
+- Implemented: Added persistent save/restore via localStorage for the complete web game state and manual save button behavior.
+- Implemented: Added automation hooks in web page (`window.render_game_to_text` and `window.advanceTime(ms)`) for deterministic-ish external stepping support.
+- Implemented: Preserved signature text `لعبة MUSTAFA RAAD` in the full web game screen.
+- Validation note: Playwright loop from `$WEB_GAME_CLIENT` could not run because `node` and `npx` are not installed in this environment (`node_missing`, `npx_missing`).
