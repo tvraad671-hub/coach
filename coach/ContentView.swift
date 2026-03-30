@@ -66,6 +66,10 @@ private enum AppLanguage: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    static var userSelectableLanguages: [AppLanguage] {
+        [.english, .arabic, .kurdish, .chinese, .hindi]
+    }
+
     var nativeName: String {
         switch self {
         case .arabic: return "العربية"
@@ -111,6 +115,41 @@ private enum GameStep {
     case leagueSelection
     case teamSelection
     case dashboard
+}
+
+private enum MainMenuAction: String, CaseIterable, Identifiable {
+    case quickMatch
+    case careerMode
+    case teamManagement
+    case trainingTactics
+    case competitions
+    case settings
+
+    var id: String { rawValue }
+}
+
+private struct MainMenuResourceItem: Identifiable {
+    let symbol: String
+    let label: String
+    let value: String
+
+    var id: String {
+        "\(symbol)-\(label)"
+    }
+}
+
+private struct MainMenuCardStyle {
+    let symbol: String
+    let backgroundAsset: String
+    let colors: [Color]
+    let glow: Color
+    let size: MainMenuCardSize
+}
+
+private enum MainMenuCardSize {
+    case featured
+    case medium
+    case small
 }
 
 private enum DashboardTab: String, CaseIterable {
@@ -250,6 +289,24 @@ private struct LiveStandingRow: Identifiable {
     let points: Int
     let form: [Character]
     let badgeURL: URL?
+}
+
+private struct TeamHubCard: Identifiable {
+    let id: String
+    let title: String
+    let icon: String
+    let colors: [Color]
+    let glowColor: Color
+    let phase: Double
+
+    init(title: String, icon: String, colors: [Color], glowColor: Color, phase: Double) {
+        self.id = title
+        self.title = title
+        self.icon = icon
+        self.colors = colors
+        self.glowColor = glowColor
+        self.phase = phase
+    }
 }
 
 private struct SportsDBStandingsResponse: Decodable {
@@ -481,7 +538,7 @@ private struct GameSaveData: Codable {
 
 private let topLeagues: [League] = [
     League(name: "الدوري الإنجليزي", teams: ["مانشستر سيتي", "أرسنال", "ليفربول", "تشيلسي", "مانشستر يونايتد", "توتنهام", "نيوكاسل", "أستون فيلا", "برايتون", "وست هام", "ولفرهامبتون", "فولهام", "كريستال بالاس", "برينتفورد", "إيفرتون", "نوتنغهام فورست", "بورنموث", "بيرنلي", "شيفيلد يونايتد", "لوتون تاون"]),
-    League(name: "الدوري الإسباني", teams: ["ريال مدريد", "برشلونة", "أتلتيكو مدريد", "إشبيلية", "ريال سوسيداد", "ريال بيتيس", "فياريال", "فالنسيا", "أتلتيك بلباو", "خيتافي", "أوساسونا", "جيرونا", "سيلتا فيغو", "ريال مايوركا", "غرناطة", "ألافيس", "قادش", "رايو فاليكانو", "لاس بالماس", "ألميريا"]),
+    League(name: "الدوري الإسباني", teams: ["برشلونة", "ريال مدريد", "أتلتيكو مدريد", "فياريال", "ريال بيتيس", "سيلتا فيغو", "ريال سوسيداد", "إسبانيول", "خيتافي", "أتلتيك بلباو", "أوساسونا", "جيرونا", "رايو فاليكانو", "فالنسيا", "إشبيلية", "ريال مايوركا", "ألافيس", "إلتشي", "ليفانتي", "ريال أوفييدو"]),
     League(name: "الدوري الإيطالي", teams: ["إنتر ميلان", "يوفنتوس", "ميلان", "نابولي", "روما", "لاتسيو", "أتلانتا", "فيورنتينا", "بولونيا", "تورينو", "ساسولو", "أودينيزي", "جنوى", "مونزا", "إمبولي", "ليتشي", "فروزينوني", "هيلاس فيرونا", "كالياري", "ساليرنيتانا"]),
     League(name: "الدوري الألماني", teams: ["بايرن ميونخ", "بوروسيا دورتموند", "لايبزيغ", "باير ليفركوزن", "شتوتغارت", "فولفسبورغ", "آينتراخت فرانكفورت", "هوفنهايم", "فرايبورغ", "ماينز", "أوغسبورغ", "بوروسيا مونشنغلادباخ", "فيردر بريمن", "يونيون برلين", "كولن", "بوخوم", "دارمشتات", "هايدنهايم", "سانت باولي", "هامبورغ"]),
     League(name: "الدوري الفرنسي", teams: ["باريس سان جيرمان", "مارسيليا", "ليون", "موناكو", "ليل", "رين", "نيس", "لانس", "ستاد ريمس", "مونبلييه", "ستراسبورغ", "نانت", "بريست", "تولوز", "لوهافر", "ميتز", "أنجيه", "لوريان", "كليرمون", "أوكسير"])
@@ -526,11 +583,15 @@ private let englishDisplayNames: [String: String] = [
     "أوساسونا": "Osasuna",
     "جيرونا": "Girona",
     "سيلتا فيغو": "Celta Vigo",
+    "إسبانيول": "Espanyol",
     "ريال مايوركا": "Mallorca",
-    "غرناطة": "Granada",
     "ألافيس": "Alaves",
-    "قادش": "Cadiz",
     "رايو فاليكانو": "Rayo Vallecano",
+    "إلتشي": "Elche",
+    "ليفانتي": "Levante",
+    "ريال أوفييدو": "Real Oviedo",
+    "غرناطة": "Granada",
+    "قادش": "Cadiz",
     "لاس بالماس": "Las Palmas",
     "ألميريا": "Almeria",
     "إنتر ميلان": "Inter Milan",
@@ -1907,6 +1968,7 @@ private struct LogoImporterScreen: View {
         language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
     }
 
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -2212,7 +2274,7 @@ private struct DiamondShape: Shape {
 }
 
 struct ContentView: View {
-    @AppStorage("coach.selectedLanguage") private var selectedLanguageRaw = AppLanguage.arabic.rawValue
+    @AppStorage("coach.selectedLanguage") private var selectedLanguageRaw = AppLanguage.english.rawValue
     @AppStorage("coach.downloadClubLogosEnabled") private var downloadClubLogosEnabled = false
     @ObservedObject private var logoStore = ClubLogoStore.shared
     @State private var step: GameStep = .welcome
@@ -2224,8 +2286,14 @@ struct ContentView: View {
     @State private var showCompetitions = false
     @State private var showMatchCenter = false
     @State private var showTeamRecord = false
+    @State private var showLeagueStandingsSheet = false
+    @State private var showTeamManagementScreen = false
+    @State private var showTeamCenterScreen = false
+    @State private var showTransferCenterScreen = false
     @State private var showPlayerSearch = false
     @State private var showMonthlyNews = false
+    @State private var showMainMenuPlaceholderAlert = false
+    @State private var mainMenuPlaceholderMessage = ""
 
     // Simulation state
     @State private var isSimulatingDays = false
@@ -2292,7 +2360,7 @@ struct ContentView: View {
     private let logosManifestURL = URL(string: "https://raw.githubusercontent.com/tvraad671-hub/logo-packs/main/logos.json")!
 
     private var language: AppLanguage {
-        AppLanguage(rawValue: selectedLanguageRaw) ?? .arabic
+        AppLanguage(rawValue: selectedLanguageRaw) ?? .english
     }
 
     private var appLocale: Locale {
@@ -2312,24 +2380,12 @@ struct ContentView: View {
 
     var body: some View {
         ZStack {
-            LinearGradient(
-                colors: [FootballTheme.backgroundPrimary, FootballTheme.cardBase, FootballTheme.backgroundSecondary],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+            appBackground
 
             content
-                .padding(.horizontal, 18)
-                .padding(.top, step == .welcome ? 82 : 24)
-                .padding(.bottom, 8)
-        }
-        .overlay(alignment: .topTrailing) {
-            if step == .welcome {
-                settingsButton
-                    .padding(.top, 18)
-                    .padding(.trailing, 18)
-            }
+                .padding(.horizontal, step == .welcome ? 14 : 18)
+                .padding(.top, step == .welcome ? 14 : 24)
+                .padding(.bottom, step == .welcome ? 14 : 8)
         }
         .fullScreenCover(isPresented: $showLogoImporter) {
             LogoImporterScreen(
@@ -2363,6 +2419,14 @@ struct ContentView: View {
                 dismissButton: .default(Text(t(ar: "حسنًا", en: "OK", hi: "ठीक है", zh: "好的", ku: "باشە")))
             )
         }
+        .alert(
+            t(ar: "تنبيه", en: "Notice", hi: "सूचना", zh: "提示", ku: "ئاگاداری"),
+            isPresented: $showMainMenuPlaceholderAlert
+        ) {
+            Button(t(ar: "حسنًا", en: "OK", hi: "ठीक है", zh: "好的", ku: "باشە"), role: .cancel) {}
+        } message: {
+            Text(mainMenuPlaceholderMessage)
+        }
         .environment(\.layoutDirection, language.layoutDirection)
         .sheet(isPresented: $showCompetitions) {
             CompetitionsView(language: language)
@@ -2383,6 +2447,18 @@ struct ContentView: View {
                 topScorerGoals: topScorerGoals,
                 achievements: achievementLog
             )
+        }
+        .sheet(isPresented: $showLeagueStandingsSheet) {
+            LeagueStandingsSheetView(
+                language: language,
+                leagueDisplayName: localizedLeagueName(selectedLeague?.name ?? "", in: language),
+                selectedTeam: selectedTeam,
+                seasonTable: $seasonTable,
+                currentWeek: matchWeek,
+                totalWeeks: totalWeeks
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showPlayerSearch) {
             PlayerSearchView(
@@ -2436,12 +2512,111 @@ struct ContentView: View {
                 )
             }
         }
+        .fullScreenCover(isPresented: $showTeamManagementScreen) {
+            TeamManagementPortraitView(
+                language: language,
+                lineup: $lineup,
+                bench: $bench,
+                tacticalPlan: $tacticalPlan,
+                onClose: {
+                    showTeamManagementScreen = false
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showTeamCenterScreen) {
+            TeamCenterPlayersView(
+                language: language,
+                lineup: lineup,
+                bench: bench,
+                onClose: {
+                    showTeamCenterScreen = false
+                }
+            )
+        }
+        .fullScreenCover(isPresented: $showTransferCenterScreen) {
+            TransferCenterPremiumView(
+                language: language,
+                selectedTeam: selectedTeam,
+                budgetM: $budgetM,
+                lineup: $lineup,
+                bench: $bench,
+                onClose: {
+                    showTransferCenterScreen = false
+                }
+            )
+        }
         .fullScreenCover(isPresented: $showSettings) {
             SettingsSheetView(selectedLanguage: selectedLanguageBinding)
         }
         .onAppear {
             restoreSavedGameIfNeeded()
         }
+    }
+
+    private var appBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [FootballTheme.backgroundPrimary, FootballTheme.cardBase, FootballTheme.backgroundSecondary],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            if step == .welcome {
+                LinearGradient(
+                    colors: [
+                        Color.white.opacity(0.06),
+                        Color.clear,
+                        Color.black.opacity(0.18)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .blendMode(.softLight)
+
+                RadialGradient(
+                    colors: [FootballTheme.cardGlow.opacity(0.24), .clear],
+                    center: UnitPoint(x: 0.14, y: 0.08),
+                    startRadius: 12,
+                    endRadius: 420
+                )
+                .blendMode(.screen)
+
+                RadialGradient(
+                    colors: [FootballTheme.accentCyan.opacity(0.18), .clear],
+                    center: UnitPoint(x: 0.86, y: 0.14),
+                    startRadius: 20,
+                    endRadius: 500
+                )
+                .blendMode(.screen)
+
+                RadialGradient(
+                    colors: [Color.white.opacity(0.08), .clear],
+                    center: UnitPoint(x: 0.5, y: 1.04),
+                    startRadius: 14,
+                    endRadius: 560
+                )
+
+                GeometryReader { proxy in
+                    let lines = max(20, Int(proxy.size.height / 30))
+                    let spacing = max(11, proxy.size.height / CGFloat(lines + 5))
+
+                    VStack(spacing: spacing) {
+                        ForEach(0..<lines, id: \.self) { _ in
+                            Rectangle()
+                                .fill(Color.white.opacity(0.012))
+                                .frame(height: 1)
+                        }
+                    }
+                    .frame(width: proxy.size.width * 1.3, height: proxy.size.height * 1.2)
+                    .rotationEffect(.degrees(-6))
+                    .offset(x: -proxy.size.width * 0.16, y: -proxy.size.height * 0.08)
+                    .blendMode(.softLight)
+                    .opacity(0.72)
+                }
+                .allowsHitTesting(false)
+            }
+        }
+        .ignoresSafeArea()
     }
 
     private var settingsButton: some View {
@@ -2466,6 +2641,46 @@ struct ContentView: View {
         .accessibilityLabel(t(ar: "الإعدادات", en: "Settings", hi: "सेटिंग्स", zh: "设置", ku: "ڕێکخستن"))
     }
 
+    private var packCenterButton: some View {
+        Button {
+            presentLogoImporter()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0xFFE38A), Color(hex: 0xD99A1D)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+
+                Circle()
+                    .stroke(Color.white.opacity(0.44), lineWidth: 1.2)
+
+                Circle()
+                    .fill(Color.white.opacity(0.30))
+                    .frame(width: 14, height: 14)
+                    .offset(x: 12, y: -12)
+
+                if isImportingLogos || isLoadingLogoManifest {
+                    ProgressView()
+                        .tint(.black.opacity(0.78))
+                        .scaleEffect(0.92)
+                } else {
+                    Image(systemName: "shippingbox.fill")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(.black.opacity(0.84))
+                }
+            }
+            .frame(width: 46, height: 46)
+            .shadow(color: Color(hex: 0xF2B647).opacity(0.58), radius: 14, x: 0, y: 7)
+            .shadow(color: Color.white.opacity(0.18), radius: 5, x: 0, y: -1)
+        }
+        .buttonStyle(InteractivePressButtonStyle())
+        .accessibilityLabel(t(ar: "مركز الحزم", en: "Packs Center", hi: "पैक्स सेंटर", zh: "扩展包中心", ku: "ناوەندی پەکیجەکان"))
+    }
+
     @ViewBuilder
     private var content: some View {
         switch step {
@@ -2482,185 +2697,449 @@ struct ContentView: View {
 
     private var welcomeView: some View {
         ScrollView(showsIndicators: false) {
-            VStack(spacing: 14) {
+            VStack(spacing: 12) {
+                welcomeSimpleTopBar
                 welcomeEntryCard
-
                 continueCareerCard
-                importLogosCard
+                welcomeStandingsSection
+            }
+            .padding(.bottom, 10)
+        }
+    }
 
-                VStack(alignment: .leading, spacing: 10) {
-                    HStack {
-                        Text(t(ar: "ترتيب الفرق (مباشر)", en: "Live Team Standings", hi: "लाइव टीम तालिका", zh: "实时球队排名", ku: "ڕیزبەندی تیمەکان (ڕاستەوخۆ)"))
-                            .font(.system(size: 20, weight: .black))
-                            .foregroundStyle(FootballTheme.textPrimary)
+    private var welcomeSimpleTopBar: some View {
+        let isRTL = language.layoutDirection == .rightToLeft
 
-                        Spacer()
+        return HStack(spacing: 10) {
+            if isRTL {
+                settingsButton
+                packCenterButton
+                Spacer(minLength: 8)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(mainMenuText(.screenTitle))
+                        .font(.system(size: 24, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(mainMenuText(.screenSubtitle))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(FootballTheme.textSecondary.opacity(0.82))
+                        .lineLimit(1)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(mainMenuText(.screenTitle))
+                        .font(.system(size: 24, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                    Text(mainMenuText(.screenSubtitle))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(FootballTheme.textSecondary.opacity(0.82))
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                packCenterButton
+                settingsButton
+            }
+        }
+        .padding(.horizontal, 2)
+        .padding(.top, 2)
+    }
 
-                        Button {
-                            Task { await loadLiveStandings(force: true) }
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.clockwise")
-                                Text(t(ar: "تحديث", en: "Refresh", hi: "रीफ़्रेश", zh: "刷新", ku: "نوێکردنەوە"))
-                            }
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.black)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 6)
-                            .background(
-                                Capsule()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [FootballTheme.accentCyan, FootballTheme.cardGlow.opacity(0.92)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(liveLoading)
+    private var welcomeStandingsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await loadLiveStandings(force: true) }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 11, weight: .black))
+                        Text(t(ar: "تحديث", en: "Refresh", hi: "रीफ्रेश", zh: "刷新", ku: "نوێکردنەوە"))
+                            .font(.system(size: 12, weight: .black))
                     }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.12))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
 
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
-                            ForEach(LiveTopLeague.allCases) { league in
-                                Button {
-                                    selectedLiveLeague = league
-                                } label: {
-                                    Text(league.localizedTitle(in: language))
-                                        .font(.system(size: 14, weight: .heavy))
-                                        .foregroundStyle(selectedLiveLeague == league ? .black : FootballTheme.textPrimary)
-                                        .padding(.horizontal, 12)
-                                        .padding(.vertical, 8)
-                                        .background(
-                                            Capsule()
-                                                .fill(
-                                                    selectedLiveLeague == league
-                                                    ? LinearGradient(
-                                                        colors: [FootballTheme.pitchGreen, FootballTheme.accentGreen],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    )
-                                                    : LinearGradient(
-                                                        colors: [FootballTheme.cardBase.opacity(0.92), FootballTheme.backgroundSecondary.opacity(0.82)],
-                                                        startPoint: .topLeading,
-                                                        endPoint: .bottomTrailing
-                                                    )
-                                                )
-                                        )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
+                Spacer(minLength: 0)
 
-                    if liveLoading && liveStandings.isEmpty {
-                        HStack(spacing: 10) {
-                            ProgressView().tint(.white)
-                            Text(t(ar: "جاري تحميل الجدول الحقيقي...", en: "Loading the live standings...", hi: "लाइव तालिका लोड हो रही है...", zh: "正在加载实时积分榜...", ku: "خشتەی ڕاستەوخۆ بار دەکرێت..."))
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.9))
-                        }
-                        .padding(.vertical, 16)
-                    } else if !liveErrorMessage.isEmpty && liveStandings.isEmpty {
-                        Text(
-                            liveErrorMessage == "عرض مؤقت - سيتم التحديث تلقائيًا عند توفر البيانات المباشرة"
-                            ? t(ar: "عرض مؤقت - سيتم التحديث تلقائيًا عند توفر البيانات المباشرة", en: "Temporary view - it will refresh automatically when live data is available", hi: "अस्थायी दृश्य - लाइव डेटा उपलब्ध होते ही यह अपने आप अपडेट होगा", zh: "当前为临时显示，实时数据可用后将自动刷新", ku: "پیشاندانی کاتییە - کاتێک داتای ڕاستەوخۆ بەردەست بێت خۆکار نوێ دەبێتەوە")
-                            : liveErrorMessage
-                        )
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(FootballTheme.dangerRed.opacity(0.95))
-                    } else {
-                        ScrollView(.horizontal, showsIndicators: true) {
-                            VStack(spacing: 8) {
-                                HStack(spacing: 6) {
-                                    liveHeaderCell(t(ar: "م", en: "#", hi: "#", zh: "名", ku: "پ"), width: 32)
-                                    liveHeaderCell(t(ar: "الفريق", en: "Team", hi: "टीम", zh: "球队", ku: "تیم"), width: 170)
-                                    liveHeaderCell(t(ar: "ل", en: "P", hi: "P", zh: "赛", ku: "ی"), width: 34)
-                                    liveHeaderCell(t(ar: "ف", en: "W", hi: "W", zh: "胜", ku: "ب"), width: 34)
-                                    liveHeaderCell(t(ar: "ت", en: "D", hi: "D", zh: "平", ku: "ی"), width: 34)
-                                    liveHeaderCell(t(ar: "خ", en: "L", hi: "L", zh: "负", ku: "د"), width: 34)
-                                    liveHeaderCell(t(ar: "له", en: "GF", hi: "GF", zh: "进", ku: "بۆ"), width: 40)
-                                    liveHeaderCell(t(ar: "عليه", en: "GA", hi: "GA", zh: "失", ku: "لەسەر"), width: 44)
-                                    liveHeaderCell("±", width: 36)
-                                    liveHeaderCell(t(ar: "ن", en: "Pts", hi: "Pts", zh: "分", ku: "خال"), width: 36)
-                                    liveHeaderCell(t(ar: "آخر 5", en: "Last 5", hi: "पिछले 5", zh: "近5场", ku: "دوا 5"), width: 130)
-                                }
+                VStack(alignment: language.layoutDirection == .rightToLeft ? .trailing : .leading, spacing: 2) {
+                    Text(t(ar: "ترتيب الفرق", en: "Team Standings", hi: "टीम स्टैंडिंग्स", zh: "球队排名", ku: "ڕیزبەندی تیمەکان"))
+                        .font(.system(size: 20, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
 
-                                ForEach(liveStandings) { row in
-                                    HStack(spacing: 6) {
-                                        liveValueCell("\(row.rank)", width: 32, bold: true, color: FootballTheme.pointsYellow)
-
-                                        HStack(spacing: 6) {
-                                            TeamLogoView(teamName: row.teamName, size: 21)
-
-                                            Text(localizedDisplayName(row.teamName, in: language))
-                                                .font(.system(size: 14, weight: .bold))
-                                                .foregroundStyle(.white)
-                                                .lineLimit(1)
-
-                                            Spacer(minLength: 0)
-                                        }
-                                        .frame(width: 170, alignment: .leading)
-
-                                        liveValueCell("\(row.played)", width: 34)
-                                        liveValueCell("\(row.wins)", width: 34)
-                                        liveValueCell("\(row.draws)", width: 34)
-                                        liveValueCell("\(row.losses)", width: 34)
-                                        liveValueCell("\(row.goalsFor)", width: 40)
-                                        liveValueCell("\(row.goalsAgainst)", width: 44)
-                                        liveValueCell("\(row.goalDiff)", width: 36)
-                                        liveValueCell("\(row.points)", width: 36, bold: true, color: .white)
-
-                                        HStack(spacing: 4) {
-                                            ForEach(Array(row.form.prefix(5).enumerated()), id: \.offset) { _, result in
-                                                formBadge(result)
-                                            }
-                                        }
-                                        .frame(width: 130, alignment: .leading)
-                                    }
-                                    .padding(.vertical, 6)
-                                    .padding(.horizontal, 4)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 10)
-                                            .fill(FootballTheme.cardBase.opacity(0.76))
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    if let last = liveLastUpdated {
-                        Text("\(t(ar: "آخر تحديث", en: "Last update", hi: "आख़िरी अपडेट", zh: "最后更新", ku: "دوایین نوێکردنەوە")): \(liveUpdatedText(from: last))")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(FootballTheme.textSecondary)
-                    }
-
-                    if !liveErrorMessage.isEmpty && !liveStandings.isEmpty {
-                        Text(
-                            liveErrorMessage == "عرض مؤقت - سيتم التحديث تلقائيًا عند توفر البيانات المباشرة"
-                            ? t(ar: "عرض مؤقت - سيتم التحديث تلقائيًا عند توفر البيانات المباشرة", en: "Temporary view - it will refresh automatically when live data is available", hi: "अस्थायी दृश्य - लाइव डेटा उपलब्ध होते ही यह अपने आप अपडेट होगा", zh: "当前为临时显示，实时数据可用后将自动刷新", ku: "پیشاندانی کاتییە - کاتێک داتای ڕاستەوخۆ بەردەست بێت خۆکار نوێ دەبێتەوە")
-                            : liveErrorMessage
-                        )
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(FootballTheme.accentCyan.opacity(0.9))
+                    if let liveLastUpdated {
+                        Text("\(t(ar: "آخر تحديث", en: "Last update", hi: "आख़िरी अपडेट", zh: "最后更新", ku: "دوایین نوێکردنەوە")): \(liveUpdatedText(from: liveLastUpdated))")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(FootballTheme.textSecondary.opacity(0.8))
+                            .lineLimit(1)
                     }
                 }
-                .padding(12)
-                .background(
-                    RoundedRectangle(cornerRadius: 18)
-                        .fill(FootballTheme.cardBase.opacity(0.80))
-                )
             }
-            .padding(.top, 16)
-            .padding(.bottom, 24)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(LiveTopLeague.allCases) { league in
+                        Button {
+                            selectedLiveLeague = league
+                            Task { await loadLiveStandings(force: false) }
+                        } label: {
+                            Text(league.localizedTitle(in: language))
+                                .font(.system(size: 12, weight: .black))
+                                .foregroundStyle(selectedLiveLeague == league ? .black : .white.opacity(0.92))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Capsule()
+                                        .fill(
+                                            selectedLiveLeague == league
+                                            ? FootballTheme.pitchGreen.opacity(0.96)
+                                            : FootballTheme.backgroundPrimary.opacity(0.52)
+                                        )
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(
+                                            selectedLiveLeague == league
+                                            ? FootballTheme.pitchGreen.opacity(0.96)
+                                            : Color.white.opacity(0.18),
+                                            lineWidth: 1
+                                        )
+                                )
+                        }
+                        .buttonStyle(InteractivePressButtonStyle())
+                    }
+                }
+            }
+
+            if liveLoading {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .tint(.white)
+                    Text(t(ar: "جاري تحديث الترتيب...", en: "Updating standings...", hi: "स्टैंडिंग अपडेट हो रही है...", zh: "正在更新排名...", ku: "ڕیزبەندی نوێ دەکرێتەوە..."))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.86))
+                }
+                .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
+            } else if liveStandings.isEmpty {
+                Text(t(ar: "لا توجد بيانات ترتيب حالياً", en: "No standings data right now", hi: "अभी कोई स्टैंडिंग डेटा नहीं", zh: "当前暂无排名数据", ku: "ئێستا هیچ داتای ڕیزبەندی نییە"))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
+            } else {
+                welcomeStandingsTable
+            }
+
+            if !liveErrorMessage.isEmpty {
+                Text(localizedDisplayText(liveErrorMessage, in: language))
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(FootballTheme.pointsYellow.opacity(0.92))
+                    .frame(maxWidth: .infinity, alignment: language.layoutDirection == .rightToLeft ? .trailing : .leading)
+            }
         }
-        .task(id: selectedLiveLeague) {
-            await loadLiveStandings(force: false)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [FootballTheme.cardBase.opacity(0.92), FootballTheme.backgroundSecondary.opacity(0.86)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(FootballTheme.cardGlow.opacity(0.34), lineWidth: 1.1)
+        )
+        .shadow(color: FootballTheme.cardGlow.opacity(0.16), radius: 14, x: 0, y: 8)
+        .onAppear {
+            if liveStandings.isEmpty {
+                Task { await loadLiveStandings(force: false) }
+            }
         }
         .onReceive(liveAutoRefreshTimer) { _ in
+            guard step == .welcome else { return }
             Task { await loadLiveStandings(force: true) }
+        }
+    }
+
+    private var welcomeStandingsTable: some View {
+        let rankWidth: CGFloat = 30
+        let teamWidth: CGFloat = 136
+        let statWidth: CGFloat = 34
+        let gdWidth: CGFloat = 44
+        let ptsWidth: CGFloat = 44
+        let formWidth: CGFloat = 100
+        let isRTL = language.layoutDirection == .rightToLeft
+
+        return ScrollView(.horizontal, showsIndicators: false) {
+            VStack(spacing: 8) {
+                HStack(spacing: 0) {
+                    liveHeaderCell("#", width: rankWidth)
+                    liveHeaderCell(t(ar: "الفريق", en: "Team", hi: "टीम", zh: "球队", ku: "تیم"), width: teamWidth)
+                    liveHeaderCell("P", width: statWidth)
+                    liveHeaderCell("W", width: statWidth)
+                    liveHeaderCell("D", width: statWidth)
+                    liveHeaderCell("L", width: statWidth)
+                    liveHeaderCell("GD", width: gdWidth)
+                    liveHeaderCell(t(ar: "ن", en: "Pts", hi: "अंक", zh: "分", ku: "خاڵ"), width: ptsWidth)
+                    liveHeaderCell(t(ar: "آخر 5", en: "Form", hi: "फॉर्म", zh: "状态", ku: "فۆرم"), width: formWidth)
+                }
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.09))
+                )
+
+                ForEach(Array(liveStandings.prefix(8).enumerated()), id: \.element.id) { index, row in
+                    let rankColor: Color = row.rank <= 4 ? FootballTheme.pitchGreen : .white.opacity(0.92)
+
+                    HStack(spacing: 0) {
+                        liveValueCell("\(row.rank)", width: rankWidth, bold: true, color: rankColor)
+
+                        Text(localizedDisplayName(row.teamName, in: language))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(FootballTheme.textPrimary)
+                            .lineLimit(1)
+                            .frame(width: teamWidth, alignment: isRTL ? .trailing : .leading)
+
+                        liveValueCell("\(row.played)", width: statWidth)
+                        liveValueCell("\(row.wins)", width: statWidth)
+                        liveValueCell("\(row.draws)", width: statWidth)
+                        liveValueCell("\(row.losses)", width: statWidth)
+                        liveValueCell("\(row.goalDiff)", width: gdWidth)
+                        liveValueCell("\(row.points)", width: ptsWidth, bold: true, color: FootballTheme.pointsYellow)
+
+                        HStack(spacing: 4) {
+                            ForEach(0..<5, id: \.self) { idx in
+                                if idx < row.form.count {
+                                    formBadge(row.form[idx])
+                                } else {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.14))
+                                        .frame(width: 20, height: 20)
+                                }
+                            }
+                        }
+                        .frame(width: formWidth)
+                    }
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(index.isMultiple(of: 2) ? Color.white.opacity(0.04) : Color.clear)
+                    )
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var mainMenuResources: [MainMenuResourceItem] {
+        guard let saved = savedCareerSnapshot, hasSavedCareer() else { return [] }
+
+        return [
+            MainMenuResourceItem(
+                symbol: "banknote.fill",
+                label: mainMenuText(.resourceBudget),
+                value: "$\(saved.budgetM)M"
+            ),
+            MainMenuResourceItem(
+                symbol: "person.2.fill",
+                label: mainMenuText(.resourceFans),
+                value: "\(saved.fanSatisfaction)%"
+            ),
+            MainMenuResourceItem(
+                symbol: "chart.line.uptrend.xyaxis",
+                label: mainMenuText(.resourceStrength),
+                value: "\(saved.squadStrength)"
+            )
+        ]
+    }
+
+    private var mainMenuProfileName: String {
+        if let savedTeam = savedCareerSnapshot?.selectedTeam, hasSavedCareer() {
+            return localizedDisplayName(savedTeam, in: language)
+        }
+        return mainMenuText(.profileGuestName)
+    }
+
+    private var mainMenuProfileSubtitle: String {
+        if let savedLeague = savedCareerSnapshot?.selectedLeagueName, hasSavedCareer() {
+            return "\(mainMenuText(.profileClubLabel)): \(localizedLeagueName(savedLeague, in: language))"
+        }
+        return mainMenuText(.profileGuestRole)
+    }
+
+    private func mainMenuCard(for action: MainMenuAction) -> some View {
+        let style = mainMenuCardStyle(for: action)
+
+        return Button {
+            handleMainMenuAction(action)
+        } label: {
+            MainMenuCardView(
+                title: mainMenuTitle(for: action),
+                subtitle: mainMenuSubtitle(for: action),
+                symbol: style.symbol,
+                backgroundAsset: style.backgroundAsset,
+                colors: style.colors,
+                glow: style.glow,
+                tag: style.size == .featured ? mainMenuText(.featuredTag) : nil,
+                size: style.size,
+                language: language
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .buttonStyle(MainMenuTilePressStyle())
+        .hoverEffect(.lift)
+        .accessibilityLabel(mainMenuTitle(for: action))
+    }
+
+    private func mainMenuCardStyle(for action: MainMenuAction) -> MainMenuCardStyle {
+        switch action {
+        case .quickMatch:
+            return MainMenuCardStyle(
+                symbol: "soccerball.inverse",
+                backgroundAsset: "menu_quick_match_bg",
+                colors: [Color(hex: 0x0A1A35), Color(hex: 0x154680), Color(hex: 0x2272C7)],
+                glow: Color(hex: 0x7FDBFF),
+                size: .featured
+            )
+        case .careerMode:
+            return MainMenuCardStyle(
+                symbol: "briefcase.fill",
+                backgroundAsset: "menu_career_bg",
+                colors: [Color(hex: 0x241D31), Color(hex: 0x49376A)],
+                glow: Color(hex: 0x9D7CFF),
+                size: .medium
+            )
+        case .teamManagement:
+            return MainMenuCardStyle(
+                symbol: "person.3.sequence.fill",
+                backgroundAsset: "menu_team_bg",
+                colors: [Color(hex: 0x0A2A35), Color(hex: 0x1E5E70)],
+                glow: Color(hex: 0x62D6B6),
+                size: .medium
+            )
+        case .trainingTactics:
+            return MainMenuCardStyle(
+                symbol: "list.clipboard.fill",
+                backgroundAsset: "menu_training_bg",
+                colors: [Color(hex: 0x222735), Color(hex: 0x3D4D70)],
+                glow: Color(hex: 0xF2A6FF),
+                size: .small
+            )
+        case .competitions:
+            return MainMenuCardStyle(
+                symbol: "trophy.fill",
+                backgroundAsset: "menu_competitions_bg",
+                colors: [Color(hex: 0x31250B), Color(hex: 0x775717)],
+                glow: Color(hex: 0xFFD56A),
+                size: .medium
+            )
+        case .settings:
+            return MainMenuCardStyle(
+                symbol: "gearshape.2.fill",
+                backgroundAsset: "menu_settings_bg",
+                colors: [Color(hex: 0x172533), Color(hex: 0x2F4A66)],
+                glow: Color(hex: 0x8CA6DB),
+                size: .small
+            )
+        }
+    }
+
+    private func mainMenuTitle(for action: MainMenuAction) -> String {
+        switch action {
+        case .quickMatch: return mainMenuText(.quickMatchTitle)
+        case .careerMode: return mainMenuText(.careerModeTitle)
+        case .teamManagement: return mainMenuText(.teamManagementTitle)
+        case .trainingTactics: return mainMenuText(.trainingTitle)
+        case .competitions: return mainMenuText(.competitionsTitle)
+        case .settings: return mainMenuText(.settingsTitle)
+        }
+    }
+
+    private func mainMenuSubtitle(for action: MainMenuAction) -> String {
+        switch action {
+        case .quickMatch: return mainMenuText(.quickMatchSubtitle)
+        case .careerMode: return mainMenuText(.careerModeSubtitle)
+        case .teamManagement: return mainMenuText(.teamManagementSubtitle)
+        case .trainingTactics: return mainMenuText(.trainingSubtitle)
+        case .competitions: return mainMenuText(.competitionsSubtitle)
+        case .settings: return mainMenuText(.settingsSubtitle)
+        }
+    }
+
+    private func handleMainMenuAction(_ action: MainMenuAction) {
+        switch action {
+        case .quickMatch:
+            if hasSavedCareer() {
+                continueSavedCareer()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                    currentTab = .simulator
+                    if isTodayMatchDay() {
+                        openMatchCenterFromHub()
+                    } else {
+                        managerNote = mainMenuText(.quickMatchFallbackNote)
+                    }
+                }
+            } else {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
+                    step = .leagueSelection
+                }
+            }
+
+        case .careerMode:
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
+                step = .leagueSelection
+            }
+
+        case .teamManagement:
+            openMainMenuSectionRequiringCareer(
+                placeholderMessage: mainMenuText(.placeholderTeamManagementRequired)
+            ) {
+                showTeamManagementScreen = true
+            }
+
+        case .trainingTactics:
+            openMainMenuSectionRequiringCareer(
+                placeholderMessage: mainMenuText(.placeholderTrainingRequired)
+            ) {
+                currentTab = .management
+            }
+
+        case .competitions:
+            showCompetitions = true
+
+        case .settings:
+            showSettings = true
+        }
+    }
+
+    private func openMainMenuSectionRequiringCareer(
+        placeholderMessage: String,
+        action: @escaping () -> Void
+    ) {
+        guard hasSavedCareer() else {
+            mainMenuPlaceholderMessage = placeholderMessage
+            showMainMenuPlaceholderAlert = true
+            return
+        }
+
+        continueSavedCareer()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+            action()
         }
     }
 
@@ -2761,7 +3240,7 @@ struct ContentView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 214)
+            .frame(height: 242)
             .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 34, style: .continuous)
@@ -3542,15 +4021,7 @@ struct ContentView: View {
             liveLoading = false
             if finalRows.isEmpty {
                 liveStandings = fallbackLocalStandings(for: league)
-                liveErrorMessage = hasSportsDBKey
-                    ? "عرض مؤقت - سيتم التحديث تلقائيًا عند توفر البيانات المباشرة"
-                    : t(
-                        ar: "أضف مفتاح API مدفوع لمصدر البيانات لعرض النتائج المباشرة.",
-                        en: "Add a paid API key for the data provider to show live results.",
-                        hi: "लाइव परिणाम दिखाने के लिए डेटा प्रदाता की पेड API key जोड़ें।",
-                        zh: "请添加数据提供方的付费 API key 以显示实时结果。",
-                        ku: "بۆ پیشاندانی ئەنجامی ڕاستەوخۆ، کلیلی APIی پارەدانەوەی سەرچاوەی داتا زیاد بکە."
-                    )
+                liveErrorMessage = "عرض مؤقت - سيتم التحديث تلقائيًا عند توفر البيانات المباشرة"
             }
         }
     }
@@ -3685,15 +4156,18 @@ struct ContentView: View {
                 ? min(164, max(130, availableHeight * 0.235))
                 : min(182, max(142, availableHeight * 0.275))
 
-            VStack(spacing: 9) {
+            VStack(spacing: 12) {
                 HubHeader(
-                    teamName: localizedDisplayName(selectedTeam ?? "", in: language),
                     roundText: roundText,
                     selectedTeam: selectedTeam,
+                    standingsLabel: t(ar: "ترتيب الدوري", en: "League Table", hi: "लीग तालिका", zh: "联赛排名", ku: "ڕیزبەندی لیگ"),
                     mainMenuLabel: t(ar: "القائمة الرئيسية", en: "Main Menu", hi: "मुख्य मेन्यू", zh: "主菜单", ku: "لیستی سەرەکی"),
                     saveLabel: t(ar: "حفظ", en: "Save", hi: "सेव", zh: "保存", ku: "هەڵگرتن"),
                     onMainMenu: goBackToMainMenu,
-                    onSave: saveGame
+                    onSave: saveGame,
+                    onStandings: {
+                        showLeagueStandingsSheet = true
+                    }
                 )
 
                 HubDateMatchCard(
@@ -3713,6 +4187,7 @@ struct ContentView: View {
                     previousMatchLabel: t(ar: "المباراة السابقة", en: "Previous Match", hi: "पिछला मैच", zh: "上一场比赛", ku: "یاریی پێشوو"),
                     isHighlighted: matchCardHighlighted
                 )
+                .padding(.top, 24)
                 .frame(height: mergedCardHeight)
                 .id(nextMatchAnimationKey)
                 .transition(
@@ -3724,13 +4199,6 @@ struct ContentView: View {
                 .animation(.spring(response: 0.36, dampingFraction: 0.84), value: nextMatchAnimationKey)
                 .animation(.easeInOut(duration: 0.26), value: matchCardHighlighted)
 
-                SimulateDaysButton(
-                    title: t(ar: "محاكاة الأيام", en: "Simulate Days", hi: "दिनों का सिमुलेशन", zh: "模拟天数", ku: "شبیه‌کردنی ڕۆژەکان"),
-                    disabled: matchWeek > totalWeeks || (isCurrentMatchDay && !isSimulatingDays),
-                    isRunning: isSimulatingDays,
-                    onTap: runSimulateDays
-                )
-
                 if isCurrentMatchDay && matchWeek <= totalWeeks {
                     PlayMatchButton(
                         title: t(ar: "ابدأ المباراة", en: "Play Match", hi: "मैच शुरू करें", zh: "开始比赛", ku: "یاری دەستپێبکە"),
@@ -3738,6 +4206,15 @@ struct ContentView: View {
                     )
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
+
+                SimulateDaysButton(
+                    title: t(ar: "محاكاة الأيام", en: "Simulate Days", hi: "दिनों का सिमुलेशन", zh: "模拟天数", ku: "شبیه‌کردنی ڕۆژەکان"),
+                    disabled: matchWeek > totalWeeks || (isCurrentMatchDay && !isSimulatingDays),
+                    isRunning: isSimulatingDays,
+                    isMatchDay: isCurrentMatchDay,
+                    onTap: runSimulateDays
+                )
+                .padding(.top, isCurrentMatchDay ? 12 : 28)
 
                 NewsCard(
                     title: t(ar: "الأخبار", en: "News", hi: "समाचार", zh: "新闻", ku: "هەواڵەکان"),
@@ -3752,6 +4229,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(height: newsCardHeight)
+                .padding(.top, 12)
                 .id(newsAnimationKey)
                 .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.95)))
                 .animation(.spring(response: 0.42, dampingFraction: 0.80), value: newsAnimationKey)
@@ -3759,7 +4237,7 @@ struct ContentView: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 18)
-            .padding(.top, 6)
+            .padding(.top, 8)
             .padding(.bottom, 8)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         }
@@ -3767,49 +4245,64 @@ struct ContentView: View {
     }
 
     private var teamView: some View {
-        let myStats = seasonTable[selectedTeam ?? ""] ?? TeamStanding()
-        let squad = lineup + bench
+        GeometryReader { proxy in
+            let boxWidth = min(proxy.size.width * 0.9, 362)
 
-        return VStack(spacing: 12) {
-            HStack {
-                Button {
-                    showTeamRecord = true
-                } label: {
-                    Text(t(ar: "سجل الفريق", en: "Team Record", hi: "टीम रिकॉर्ड", zh: "球队战绩", ku: "تۆماری تیم"))
-                        .font(.system(size: 17, weight: .black))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 9)
-                        .background(
-                            Capsule()
-                                .fill(FootballTheme.pitchGreen)
-                        )
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-            }
-
-            headerTitle(t(ar: "لاعبين الفريق", en: "Team Players", hi: "टीम खिलाड़ी", zh: "球队球员", ku: "یاریزانانی تیم"))
-
-            ScrollView {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                    ForEach(squad) { player in
-                        playerSquare(player)
+            VStack(spacing: 26) {
+                ForEach(teamHubCards) { card in
+                    Button {
+                        handleTeamHubCardTap(card)
+                    } label: {
+                        TeamHubPremiumCard(card: card)
+                            .frame(width: boxWidth, height: 138)
                     }
+                    .buttonStyle(PremiumTilePressStyle())
+                    .hoverEffect(.lift)
                 }
             }
-
-            infoRow(
-                t(ar: "سجل الموسم", en: "Season Record", hi: "सीज़न रिकॉर्ड", zh: "赛季战绩", ku: "تۆماری وەرز"),
-                "\(t(ar: "ف", en: "W", hi: "W", zh: "胜", ku: "ب"))\(myStats.wins) - \(t(ar: "ت", en: "D", hi: "D", zh: "平", ku: "ی"))\(myStats.draws) - \(t(ar: "خ", en: "L", hi: "L", zh: "负", ku: "د"))\(myStats.losses)"
-            )
-            infoRow(
-                t(ar: "الأهداف", en: "Goals", hi: "गोल", zh: "进球", ku: "گۆڵەکان"),
-                "\(t(ar: "له", en: "GF", hi: "GF", zh: "进", ku: "بۆ")) \(myStats.goalsFor) / \(t(ar: "عليه", en: "GA", hi: "GA", zh: "失", ku: "لەسەر")) \(myStats.goalsAgainst)"
-            )
-            awardsSummaryCard
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.horizontal, 10)
         }
+        .environment(\.layoutDirection, .rightToLeft)
+    }
+
+    private func handleTeamHubCardTap(_ card: TeamHubCard) {
+        switch card.title {
+        case "إدارة الفريق":
+            showTeamManagementScreen = true
+        case "مركز الفريق":
+            showTeamCenterScreen = true
+        case "مركز الانتقالات":
+            showTransferCenterScreen = true
+        default:
+            break
+        }
+    }
+
+    private var teamHubCards: [TeamHubCard] {
+        [
+            TeamHubCard(
+                title: "إدارة الفريق",
+                icon: "sportscourt.fill",
+                colors: [Color(hex: 0x3A2DA8), Color(hex: 0x2D4DCE)],
+                glowColor: Color(hex: 0x7D79FF),
+                phase: 0.0
+            ),
+            TeamHubCard(
+                title: "مركز الفريق",
+                icon: "person.3.fill",
+                colors: [Color(hex: 0x1F3C99), Color(hex: 0x1E6CD9)],
+                glowColor: Color(hex: 0x55C7FF),
+                phase: 1.7
+            ),
+            TeamHubCard(
+                title: "مركز الانتقالات",
+                icon: "arrow.left.arrow.right.circle.fill",
+                colors: [Color(hex: 0x6A2DBD), Color(hex: 0xC94DB9)],
+                glowColor: Color(hex: 0x6EE8E4),
+                phase: 3.2
+            )
+        ]
     }
 
     private var managementView: some View {
@@ -4069,6 +4562,9 @@ struct ContentView: View {
         showCompetitions = false
         showMatchCenter = false
         showTeamRecord = false
+        showTeamManagementScreen = false
+        showTeamCenterScreen = false
+        showTransferCenterScreen = false
         showPlayerSearch = false
         showNegotiationSheet = false
         showMonthlyNews = false
@@ -5095,6 +5591,104 @@ struct ContentView: View {
     }
 
     private func generateSquad(for team: String) -> (starters: [TeamPlayer], bench: [TeamPlayer]) {
+        if team == "أتلتيكو مدريد" || team == "Atletico Madrid" {
+            let starters: [TeamPlayer] = [
+                TeamPlayer(name: "Jan Oblak", role: "GK", number: 13),
+                TeamPlayer(name: "Nahuel Molina", role: "RB", number: 16),
+                TeamPlayer(name: "Robin Le Normand", role: "CB", number: 24),
+                TeamPlayer(name: "Jose Maria Gimenez", role: "CB", number: 2),
+                TeamPlayer(name: "Matteo Ruggeri", role: "LB", number: 3),
+                TeamPlayer(name: "Johnny Cardoso", role: "DM", number: 5),
+                TeamPlayer(name: "Koke", role: "CM", number: 6),
+                TeamPlayer(name: "Pablo Barrios", role: "CM", number: 8),
+                TeamPlayer(name: "Antoine Griezmann", role: "SS", number: 7),
+                TeamPlayer(name: "Julian Alvarez", role: "ST", number: 19),
+                TeamPlayer(name: "Alex Baena", role: "LW", number: 10)
+            ]
+
+            let bench: [TeamPlayer] = [
+                TeamPlayer(name: "Juan Musso", role: "GK", number: 1),
+                TeamPlayer(name: "Clement Lenglet", role: "CB", number: 15),
+                TeamPlayer(name: "Marcos Llorente", role: "RB", number: 14),
+                TeamPlayer(name: "David Hancko", role: "CB", number: 17),
+                TeamPlayer(name: "Marc Pubill", role: "RB", number: 18),
+                TeamPlayer(name: "Rodrigo Mendoza", role: "CM", number: 27),
+                TeamPlayer(name: "Obed Vargas", role: "CM", number: 28),
+                TeamPlayer(name: "Thiago Almada", role: "AM", number: 11),
+                TeamPlayer(name: "Ademola Lookman", role: "SS", number: 22),
+                TeamPlayer(name: "Alexander Sorloth", role: "ST", number: 9),
+                TeamPlayer(name: "Giuliano Simeone", role: "RW", number: 20),
+                TeamPlayer(name: "Nico Gonzalez", role: "RW", number: 23)
+            ]
+
+            return (starters, bench)
+        } else if team == "ريال مدريد" || team == "Real Madrid" {
+            let starters: [TeamPlayer] = [
+                TeamPlayer(name: "Thibaut Courtois", role: "GK", number: 1),
+                TeamPlayer(name: "Dani Carvajal", role: "RB", number: 2),
+                TeamPlayer(name: "Eder Militao", role: "CB", number: 3),
+                TeamPlayer(name: "Antonio Rudiger", role: "CB", number: 22),
+                TeamPlayer(name: "Ferland Mendy", role: "LB", number: 23),
+                TeamPlayer(name: "Aurelien Tchouameni", role: "DM", number: 14),
+                TeamPlayer(name: "Federico Valverde", role: "CM", number: 8),
+                TeamPlayer(name: "Jude Bellingham", role: "AM", number: 5),
+                TeamPlayer(name: "Rodrygo", role: "RW", number: 11),
+                TeamPlayer(name: "Kylian Mbappe", role: "ST", number: 10),
+                TeamPlayer(name: "Vinicius Junior", role: "LW", number: 7)
+            ]
+
+            let bench: [TeamPlayer] = [
+                TeamPlayer(name: "Andriy Lunin", role: "GK", number: 13),
+                TeamPlayer(name: "David Alaba", role: "CB", number: 4),
+                TeamPlayer(name: "Trent Alexander-Arnold", role: "RB", number: 12),
+                TeamPlayer(name: "Raul Asencio", role: "CB", number: 17),
+                TeamPlayer(name: "Dean Huijsen", role: "CB", number: 24),
+                TeamPlayer(name: "Alvaro Carreras", role: "LB", number: 18),
+                TeamPlayer(name: "Fran Garcia", role: "LB", number: 20),
+                TeamPlayer(name: "Eduardo Camavinga", role: "CM", number: 6),
+                TeamPlayer(name: "Arda Guler", role: "AM", number: 15),
+                TeamPlayer(name: "Dani Ceballos", role: "CM", number: 19),
+                TeamPlayer(name: "Thiago Pitarch", role: "CM", number: 45),
+                TeamPlayer(name: "Gonzalo Garcia", role: "ST", number: 16),
+                TeamPlayer(name: "Brahim Diaz", role: "RW", number: 21),
+                TeamPlayer(name: "Franco Mastantuono", role: "RW", number: 30)
+            ]
+
+            return (starters, bench)
+        } else if team == "برشلونة" || team == "Barcelona" {
+            let starters: [TeamPlayer] = [
+                TeamPlayer(name: "Joan Garcia", role: "GK", number: 13),
+                TeamPlayer(name: "Joao Cancelo", role: "RB", number: 2),
+                TeamPlayer(name: "Ronald Araujo", role: "CB", number: 4),
+                TeamPlayer(name: "Pau Cubarsi", role: "CB", number: 5),
+                TeamPlayer(name: "Alejandro Balde", role: "LB", number: 3),
+                TeamPlayer(name: "Marc Casado", role: "DM", number: 17),
+                TeamPlayer(name: "Pedri", role: "CM", number: 8),
+                TeamPlayer(name: "Gavi", role: "CM", number: 6),
+                TeamPlayer(name: "Lamine Yamal", role: "RW", number: 10),
+                TeamPlayer(name: "Robert Lewandowski", role: "ST", number: 9),
+                TeamPlayer(name: "Raphinha", role: "LW", number: 11)
+            ]
+
+            let bench: [TeamPlayer] = [
+                TeamPlayer(name: "Frenkie de Jong", role: "CM", number: 21),
+                TeamPlayer(name: "Ferran Torres", role: "ST", number: 7),
+                TeamPlayer(name: "Fermin Lopez", role: "AM", number: 16),
+                TeamPlayer(name: "Dani Olmo", role: "AM", number: 20),
+                TeamPlayer(name: "Marc Bernal", role: "DM", number: 22),
+                TeamPlayer(name: "Marcus Rashford", role: "LW", number: 14),
+                TeamPlayer(name: "Rooney Bardghji", role: "RW", number: 19),
+                TeamPlayer(name: "Jules Kounde", role: "RB", number: 23),
+                TeamPlayer(name: "Andreas Christensen", role: "CB", number: 15),
+                TeamPlayer(name: "Eric Garcia", role: "CB", number: 24),
+                TeamPlayer(name: "Gerard Martin", role: "LB", number: 18),
+                TeamPlayer(name: "Xavi Espart", role: "RB", number: 42),
+                TeamPlayer(name: "Wojciech Szczesny", role: "GK", number: 25)
+            ]
+
+            return (starters, bench)
+        }
+
         let starters: [TeamPlayer] = [
             TeamPlayer(name: "حارس \(team)", role: "GK", number: 1),
             TeamPlayer(name: "ظهير أيمن", role: "RB", number: 2),
@@ -5365,22 +5959,23 @@ private struct TeamCalendarView: View {
 }
 
 private struct HubHeader: View {
-    let teamName: String
     let roundText: String
     let selectedTeam: String?
+    let standingsLabel: String
     let mainMenuLabel: String
     let saveLabel: String
     let onMainMenu: () -> Void
     let onSave: () -> Void
+    let onStandings: () -> Void
 
     var body: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 10) {
+        VStack(spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
                 logoBadge
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 8) {
+                HStack(alignment: .top, spacing: 8) {
                     Button(action: onSave) {
                         Label(saveLabel, systemImage: "square.and.arrow.down.fill")
                             .font(.system(size: 13, weight: .heavy))
@@ -5396,39 +5991,69 @@ private struct HubHeader: View {
                     }
                     .buttonStyle(InteractivePressButtonStyle())
 
-                    Button(action: onMainMenu) {
-                        Label(mainMenuLabel, systemImage: "house.fill")
-                            .font(.system(size: 13, weight: .bold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .foregroundStyle(FootballTheme.textPrimary.opacity(0.92))
-                            .padding(.horizontal, 12)
+                    VStack(spacing: 7) {
+                        Button(action: onMainMenu) {
+                            Label(mainMenuLabel, systemImage: "house.fill")
+                                .font(.system(size: 13, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                                .foregroundStyle(FootballTheme.textPrimary.opacity(0.92))
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(minWidth: 128)
+                                .background(
+                                    Capsule()
+                                        .fill(FootballTheme.backgroundPrimary.opacity(0.62))
+                                )
+                                .overlay(
+                                    Capsule()
+                                        .stroke(FootballTheme.textSecondary.opacity(0.28), lineWidth: 1)
+                                )
+                        }
+                        .buttonStyle(InteractivePressButtonStyle())
+
+                        Button(action: onStandings) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "list.number")
+                                    .font(.system(size: 12, weight: .black))
+
+                                Text(standingsLabel)
+                                    .font(.system(size: 12, weight: .black))
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.72)
+                            }
+                            .foregroundStyle(.white.opacity(0.96))
+                            .padding(.horizontal, 10)
                             .padding(.vertical, 8)
+                            .frame(minWidth: 128)
                             .background(
-                                Capsule()
-                                    .fill(FootballTheme.backgroundPrimary.opacity(0.62))
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .fill(
+                                        LinearGradient(
+                                            colors: [FootballTheme.cardBase.opacity(0.9), FootballTheme.backgroundSecondary.opacity(0.72)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
                             )
                             .overlay(
-                                Capsule()
-                                    .stroke(FootballTheme.textSecondary.opacity(0.28), lineWidth: 1)
+                                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                    .stroke(FootballTheme.accentCyan.opacity(0.34), lineWidth: 1)
                             )
+                        }
+                        .buttonStyle(InteractivePressButtonStyle())
                     }
-                    .buttonStyle(InteractivePressButtonStyle())
                 }
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text(teamName.isEmpty ? "—" : teamName)
-                    .font(.system(size: 22, weight: .black, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                Text(roundText)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            Text(roundText)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .padding(.bottom, 2)
     }
 
     private var logoBadge: some View {
@@ -5441,20 +6066,347 @@ private struct HubHeader: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .frame(width: 66, height: 66)
+                .frame(width: 72, height: 72)
                 .overlay(
                     Circle()
                         .stroke(Color.white.opacity(0.28), lineWidth: 1.2)
                 )
 
             if let selectedTeam {
-                TeamLogoView(teamName: selectedTeam, size: 46)
+                TeamLogoView(teamName: selectedTeam, size: 50)
             } else {
                 Image(systemName: "shield.lefthalf.filled")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white.opacity(0.92))
             }
         }
+    }
+}
+
+private extension ContentView {
+    enum MainMenuTextKey {
+        case screenTitle
+        case screenSubtitle
+        case profileGuestName
+        case profileGuestRole
+        case profileClubLabel
+        case resourceBudget
+        case resourceFans
+        case resourceStrength
+        case quickMatchTitle
+        case quickMatchSubtitle
+        case careerModeTitle
+        case careerModeSubtitle
+        case teamManagementTitle
+        case teamManagementSubtitle
+        case trainingTitle
+        case trainingSubtitle
+        case competitionsTitle
+        case competitionsSubtitle
+        case settingsTitle
+        case settingsSubtitle
+        case featuredTag
+        case placeholderTeamManagementRequired
+        case placeholderTrainingRequired
+        case quickMatchFallbackNote
+    }
+
+    func mainMenuText(_ key: MainMenuTextKey) -> String {
+        switch key {
+        case .screenTitle:
+            return t(ar: "القائمة الرئيسية", en: "Main Menu", hi: "Main Menu", zh: "Main Menu", ku: "لیستی سەرەکی")
+        case .screenSubtitle:
+            return t(ar: "وضع المهنة", en: "Career Hub", hi: "Career Hub", zh: "Career Hub", ku: "ناوەندی پیشە")
+        case .profileGuestName:
+            return t(ar: "مدرب ضيف", en: "Guest Coach", hi: "Guest Coach", zh: "Guest Coach", ku: "ڕاهێنەری میوان")
+        case .profileGuestRole:
+            return t(ar: "ابدأ مهنة جديدة", en: "Start a new career", hi: "Start a new career", zh: "Start a new career", ku: "پیشەیەکی نوێ دەستپێبکە")
+        case .profileClubLabel:
+            return t(ar: "النادي", en: "Club", hi: "Club", zh: "Club", ku: "یانە")
+        case .resourceBudget:
+            return t(ar: "الميزانية", en: "Budget", hi: "Budget", zh: "Budget", ku: "بودجە")
+        case .resourceFans:
+            return t(ar: "الجماهير", en: "Fans", hi: "Fans", zh: "Fans", ku: "هاندەران")
+        case .resourceStrength:
+            return t(ar: "القوة", en: "Strength", hi: "Strength", zh: "Strength", ku: "هێز")
+        case .quickMatchTitle:
+            return t(ar: "مباراة سريعة", en: "Quick Match", hi: "Quick Match", zh: "Quick Match", ku: "یاریی خێرا")
+        case .quickMatchSubtitle:
+            return t(ar: "ادخل مباشرة إلى أجواء المباراة.", en: "Jump straight into matchday action.", hi: "Jump straight into matchday action.", zh: "Jump straight into matchday action.", ku: "ڕاستەوخۆ بچۆ ناو کەشی یاری.")
+        case .careerModeTitle:
+            return t(ar: "وضع المهنة", en: "Career Mode", hi: "Career Mode", zh: "Career Mode", ku: "مۆدی پیشە")
+        case .careerModeSubtitle:
+            return t(ar: "ابدأ موسماً جديداً وابنِ مشروعك.", en: "Start a new season and build your project.", hi: "Start a new season and build your project.", zh: "Start a new season and build your project.", ku: "وەرزێکی نوێ دەستپێبکە و پڕۆژەکەت دروست بکە.")
+        case .teamManagementTitle:
+            return t(ar: "إدارة الفريق", en: "Team Management", hi: "Team Management", zh: "Team Management", ku: "بەڕێوەبردنی تیم")
+        case .teamManagementSubtitle:
+            return t(ar: "التشكيلة، الانتقالات، وتنظيم القائمة.", en: "Lineup, transfers, and squad control.", hi: "Lineup, transfers, and squad control.", zh: "Lineup, transfers, and squad control.", ku: "ڕیزبەندی، گواستنەوە و کۆنترۆڵی تیم.")
+        case .trainingTitle:
+            return t(ar: "التدريب والخطط", en: "Training & Tactics", hi: "Training & Tactics", zh: "Training & Tactics", ku: "ڕاهێنان و پلان")
+        case .trainingSubtitle:
+            return t(ar: "عدّل الخطة وارفع الجاهزية.", en: "Tune tactics and improve readiness.", hi: "Tune tactics and improve readiness.", zh: "Tune tactics and improve readiness.", ku: "پلان چاکبکە و ئامادەکاری بەرزبکە.")
+        case .competitionsTitle:
+            return t(ar: "البطولات والدوريات", en: "Competitions & Leagues", hi: "Competitions & Leagues", zh: "Competitions & Leagues", ku: "پاڵەوانی و لیگەکان")
+        case .competitionsSubtitle:
+            return t(ar: "استعرض البطولات المتاحة ومساراتها.", en: "Browse competitions and league paths.", hi: "Browse competitions and league paths.", zh: "Browse competitions and league paths.", ku: "پاڵەوانییە بەردەستەکان و ڕێگاکانی لیگ ببینە.")
+        case .settingsTitle:
+            return t(ar: "الإعدادات", en: "Settings", hi: "Settings", zh: "Settings", ku: "ڕێکخستن")
+        case .settingsSubtitle:
+            return t(ar: "اللغة، الدليل، وتخصيص التجربة.", en: "Language, guide, and experience options.", hi: "Language, guide, and experience options.", zh: "Language, guide, and experience options.", ku: "زمان، ڕێنمایی و هەڵبژاردەکانی ئەزموون.")
+        case .featuredTag:
+            return t(ar: "المحور الرئيسي", en: "Featured", hi: "Featured", zh: "Featured", ku: "سەرەکی")
+        case .placeholderTeamManagementRequired:
+            return t(ar: "لا توجد مهنة محفوظة لإدارة الفريق حالياً.", en: "No saved career is available for team management right now.", hi: "No saved career is available for team management right now.", zh: "No saved career is available for team management right now.", ku: "ئێستا هیچ پیشەیەکی هەڵگیراو بۆ بەڕێوەبردنی تیم نییە.")
+        case .placeholderTrainingRequired:
+            return t(ar: "التدريب والخطط يحتاجان مهنة محفوظة أولاً.", en: "Training and tactics need an active saved career first.", hi: "Training and tactics need an active saved career first.", zh: "Training and tactics need an active saved career first.", ku: "ڕاهێنان و پلان پێویستیان بە پیشەیەکی هەڵگیراوی چالاک هەیە.")
+        case .quickMatchFallbackNote:
+            return t(ar: "تم فتح مركز المحاكاة. حرّك الأيام حتى يوم المباراة.", en: "Simulation hub opened. Advance days until match day.", hi: "Simulation hub opened. Advance days until match day.", zh: "Simulation hub opened. Advance days until match day.", ku: "ناوەندی شبیه‌کردن کرایەوە. ڕۆژەکان بڕۆ تا ڕۆژی یاری.")
+        }
+    }
+}
+
+private struct LeagueStandingsSheetView: View {
+    let language: AppLanguage
+    let leagueDisplayName: String
+    let selectedTeam: String?
+    @Binding var seasonTable: [String: TeamStanding]
+    let currentWeek: Int
+    let totalWeeks: Int
+
+    @Environment(\.dismiss) private var dismiss
+
+    private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+        language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+    }
+
+    private var sortedRows: [(name: String, stats: TeamStanding)] {
+        seasonTable
+            .map { (name: $0.key, stats: $0.value) }
+            .sorted {
+                if $0.stats.points != $1.stats.points { return $0.stats.points > $1.stats.points }
+                if $0.stats.goalDifference != $1.stats.goalDifference { return $0.stats.goalDifference > $1.stats.goalDifference }
+                return $0.stats.goalsFor > $1.stats.goalsFor
+            }
+    }
+
+    var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: [FootballTheme.backgroundPrimary, FootballTheme.cardBase, FootballTheme.backgroundSecondary],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            VStack(spacing: 10) {
+                header
+                leagueMeta
+                tableContent
+            }
+            .padding(.horizontal, 14)
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+        }
+        .environment(\.layoutDirection, .rightToLeft)
+    }
+
+    private var header: some View {
+        HStack {
+            Button {
+                dismiss()
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .black))
+                    Text(t(ar: "إغلاق", en: "Close", hi: "बंद करें", zh: "关闭", ku: "داخستن"))
+                        .font(.system(size: 12, weight: .black))
+                }
+                .foregroundStyle(.white.opacity(0.92))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.10))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+            }
+            .buttonStyle(InteractivePressButtonStyle())
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Image(systemName: "list.number")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(FootballTheme.accentCyan)
+
+                Text(t(ar: "ترتيب الدوري", en: "League Table", hi: "लीग तालिका", zh: "联赛排名", ku: "ڕیزبەندی لیگ"))
+                    .font(.system(size: 19, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private var leagueMeta: some View {
+        HStack(spacing: 10) {
+            metaPill(
+                icon: "trophy.fill",
+                text: leagueDisplayName.isEmpty
+                    ? t(ar: "الدوري", en: "League", hi: "लीग", zh: "联赛", ku: "لیگ")
+                    : leagueDisplayName
+            )
+
+            metaPill(
+                icon: "flag.checkered",
+                text: "\(t(ar: "الجولة", en: "Round", hi: "राउंड", zh: "轮次", ku: "دەور")) \(min(currentWeek, totalWeeks))/\(totalWeeks)"
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private func metaPill(icon: String, text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+            Text(text)
+                .font(.system(size: 12, weight: .bold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .foregroundStyle(.white.opacity(0.9))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.10))
+        )
+    }
+
+    private var tableContent: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            Text(t(ar: "يتحدث تلقائيًا بعد كل مباراة", en: "Auto updates after every match", hi: "हर मैच के बाद स्वतः अपडेट", zh: "每场比赛后自动更新", ku: "دوای هەر یارییەک خۆکار نوێ دەبێتەوە"))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.76))
+                .frame(maxWidth: .infinity, alignment: .trailing)
+
+            if sortedRows.isEmpty {
+                Text(t(ar: "لا توجد بيانات ترتيب حالياً", en: "No standings data right now", hi: "अभी कोई तालिका डेटा नहीं", zh: "当前暂无积分数据", ku: "ئێستا هیچ داتای ڕیزبەندییەک نییە"))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 30)
+            } else {
+                ScrollView(.vertical, showsIndicators: false) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        VStack(spacing: 7) {
+                            standingsHeaderRow
+
+                            ForEach(Array(sortedRows.enumerated()), id: \.element.name) { idx, row in
+                                standingsRow(rank: idx + 1, name: row.name, stats: row.stats)
+                            }
+                        }
+                        .padding(.bottom, 8)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(FootballTheme.cardBase.opacity(0.54))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+        )
+    }
+
+    private var standingsHeaderRow: some View {
+        HStack(spacing: 6) {
+            headerCell(t(ar: "م", en: "#", hi: "#", zh: "名", ku: "پ"), width: 34)
+            headerCell(t(ar: "الفريق", en: "Team", hi: "टीम", zh: "球队", ku: "تیم"), width: 170)
+            headerCell(t(ar: "ل", en: "P", hi: "P", zh: "赛", ku: "ی"), width: 34)
+            headerCell(t(ar: "ف", en: "W", hi: "W", zh: "胜", ku: "ب"), width: 34)
+            headerCell(t(ar: "ت", en: "D", hi: "D", zh: "平", ku: "ی"), width: 34)
+            headerCell(t(ar: "خ", en: "L", hi: "L", zh: "负", ku: "د"), width: 34)
+            headerCell(t(ar: "له", en: "GF", hi: "GF", zh: "进", ku: "بۆ"), width: 40)
+            headerCell(t(ar: "عليه", en: "GA", hi: "GA", zh: "失", ku: "لەسەر"), width: 44)
+            headerCell("±", width: 34)
+            headerCell(t(ar: "ن", en: "Pts", hi: "Pts", zh: "分", ku: "خال"), width: 40)
+        }
+        .frame(minWidth: 500, alignment: .leading)
+    }
+
+    private func standingsRow(rank: Int, name: String, stats: TeamStanding) -> some View {
+        let isMyTeam = name == selectedTeam
+        return HStack(spacing: 6) {
+            valueCell("\(rank)", width: 34, bold: true, color: FootballTheme.pointsYellow)
+
+            HStack(spacing: 6) {
+                TeamLogoView(teamName: name, size: 20)
+
+                Text(localizedDisplayName(name, in: language))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+
+                Spacer(minLength: 0)
+            }
+            .frame(width: 170, alignment: .leading)
+
+            valueCell("\(stats.played)", width: 34)
+            valueCell("\(stats.wins)", width: 34)
+            valueCell("\(stats.draws)", width: 34)
+            valueCell("\(stats.losses)", width: 34)
+            valueCell("\(stats.goalsFor)", width: 40)
+            valueCell("\(stats.goalsAgainst)", width: 44)
+            valueCell("\(stats.goalDifference)", width: 34)
+            valueCell("\(stats.points)", width: 40, bold: true, color: .white)
+        }
+        .frame(minWidth: 500, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(
+                    isMyTeam
+                        ? LinearGradient(
+                            colors: [FootballTheme.pitchGreen.opacity(0.34), FootballTheme.accentGreen.opacity(0.22)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        : LinearGradient(
+                            colors: [Color.white.opacity(0.08), Color.white.opacity(0.05)],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(
+                    isMyTeam ? FootballTheme.pitchGreen.opacity(0.70) : Color.white.opacity(0.08),
+                    lineWidth: isMyTeam ? 1.2 : 0.8
+                )
+        )
+        .shadow(color: isMyTeam ? FootballTheme.pitchGreen.opacity(0.26) : .clear, radius: 6, x: 0, y: 3)
+    }
+
+    private func headerCell(_ text: String, width: CGFloat) -> some View {
+        Text(text)
+            .font(.system(size: 11, weight: .heavy))
+            .foregroundStyle(.white.opacity(0.76))
+            .frame(width: width, alignment: .center)
+    }
+
+    private func valueCell(_ text: String, width: CGFloat, bold: Bool = false, color: Color = .white.opacity(0.9)) -> some View {
+        Text(text)
+            .font(.system(size: 12, weight: bold ? .black : .semibold))
+            .foregroundStyle(color)
+            .frame(width: width, alignment: .center)
     }
 }
 
@@ -5814,6 +6766,7 @@ private struct SimulateDaysButton: View {
     let title: String
     let disabled: Bool
     let isRunning: Bool
+    let isMatchDay: Bool
     let onTap: () -> Void
     @State private var pulse = false
     @State private var glow = false
@@ -5829,8 +6782,12 @@ private struct SimulateDaysButton: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.86)
                 } else {
-                    Image(systemName: "forward.fill")
-                        .font(.system(size: 18, weight: .black))
+                    HStack(spacing: 1) {
+                        Image(systemName: "forward.fill")
+                        Image(systemName: "forward.fill")
+                    }
+                    .font(.system(size: 15, weight: .black))
+
                     Text(title)
                         .font(.system(size: 20, weight: .black, design: .rounded))
                         .lineLimit(1)
@@ -5855,7 +6812,12 @@ private struct SimulateDaysButton: View {
                     .fill(backgroundFill)
                     .overlay(
                         RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(isRunning ? Color.white.opacity(0.45) : Color.clear, lineWidth: 1.2)
+                            .stroke(
+                                isRunning
+                                    ? Color.white.opacity(0.45)
+                                    : (disabled && isMatchDay ? Color.white.opacity(0.18) : Color.clear),
+                                lineWidth: 1.2
+                            )
                     )
             )
             .overlay {
@@ -5894,6 +6856,13 @@ private struct SimulateDaysButton: View {
 
     private var backgroundFill: LinearGradient {
         if disabled && !isRunning {
+            if isMatchDay {
+                return LinearGradient(
+                    colors: [Color(hex: 0x8C83D2), Color(hex: 0x796EB6)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
             return LinearGradient(
                 colors: [FootballTheme.muted.opacity(0.68), FootballTheme.muted.opacity(0.68)],
                 startPoint: .leading,
@@ -5919,8 +6888,11 @@ private struct SimulateDaysButton: View {
     }
 
     private var shadowColor: Color {
-        if disabled && !isRunning {
+        if disabled && !isRunning && !isMatchDay {
             return .clear
+        }
+        if disabled && isMatchDay {
+            return Color(hex: 0xA89BFF).opacity(0.34)
         }
         return FootballTheme.pitchGreen.opacity(isRunning ? 0.70 : 0.34)
     }
@@ -6008,6 +6980,4264 @@ private struct InteractivePressButtonStyle: ButtonStyle {
     }
 }
 
+private struct PremiumTilePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.975 : 1)
+            .brightness(configuration.isPressed ? 0.04 : 0)
+            .saturation(configuration.isPressed ? 1.05 : 1)
+            .animation(.spring(response: 0.30, dampingFraction: 0.78), value: configuration.isPressed)
+    }
+}
+
+private struct MainMenuTilePressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .environment(\.mainMenuTilePressed, configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.968 : 1)
+            .brightness(configuration.isPressed ? 0.022 : 0)
+            .saturation(configuration.isPressed ? 1.05 : 1)
+            .overlay {
+                Color.white
+                    .opacity(configuration.isPressed ? 0.06 : 0)
+            }
+            .animation(.spring(response: 0.24, dampingFraction: 0.78), value: configuration.isPressed)
+    }
+}
+
+private struct MainMenuTilePressedKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private extension EnvironmentValues {
+    var mainMenuTilePressed: Bool {
+        get { self[MainMenuTilePressedKey.self] }
+        set { self[MainMenuTilePressedKey.self] = newValue }
+    }
+}
+
+private struct MainMenuTopBarView: View {
+    let title: String
+    let subtitle: String
+    let resources: [MainMenuResourceItem]
+    let profileName: String
+    let profileSubtitle: String
+    let onOpenPacks: () -> Void
+    let onOpenSettings: () -> Void
+    let language: AppLanguage
+
+    @Environment(\.layoutDirection) private var layoutDirection
+
+    private var isRTL: Bool {
+        layoutDirection == .rightToLeft
+    }
+
+    private var topBarShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 26, style: .continuous)
+    }
+
+    var body: some View {
+        HStack(spacing: 13) {
+            if isRTL {
+                profileSection
+                if !resources.isEmpty { resourcesSection }
+                titleSection
+            } else {
+                titleSection
+                if !resources.isEmpty { resourcesSection }
+                profileSection
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 12)
+        .background(
+            topBarShape
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    topBarShape
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color(hex: 0x0F1936).opacity(0.90),
+                                    Color(hex: 0x1B2E61).opacity(0.78)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .overlay(
+                    topBarShape
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.20), Color.white.opacity(0.02), .clear],
+                                startPoint: .top,
+                                endPoint: .center
+                            )
+                        )
+                )
+        )
+        .overlay(
+            topBarShape
+                .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                .overlay(
+                    topBarShape
+                        .inset(by: 1.4)
+                        .stroke(Color.black.opacity(0.30), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.34), radius: 18, x: 0, y: 10)
+        .shadow(color: FootballTheme.accentCyan.opacity(0.10), radius: 16, x: 0, y: 0)
+    }
+
+    private var titleSection: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 26, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .shadow(color: .black.opacity(0.30), radius: 3, x: 0, y: 1)
+
+            Text(subtitle)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(0.74))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+    }
+
+    private var resourcesSection: some View {
+        HStack(spacing: 8) {
+            ForEach(resources) { item in
+                HStack(spacing: 6) {
+                    Image(systemName: item.symbol)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Color(hex: 0xFFE25C))
+                    Text(item.value)
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.white)
+                    Text(item.label)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Color.white.opacity(0.65))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.10), Color.white.opacity(0.02)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .overlay(
+                            Capsule()
+                                .stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                        )
+                )
+                .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 2)
+            }
+        }
+    }
+
+    private var profileSection: some View {
+        HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                actionButton(
+                    symbol: "shippingbox.fill",
+                    tint: Color(hex: 0xFFD76A),
+                    accessibilityLabel: language.text(
+                        ar: "مركز الحزم",
+                        en: "Packs Center",
+                        hi: "Packs Center",
+                        zh: "Packs Center",
+                        ku: "ناوەندی پەکیجەکان"
+                    ),
+                    action: onOpenPacks
+                )
+                actionButton(
+                    symbol: "gearshape.fill",
+                    tint: Color(hex: 0x8CA6DB),
+                    accessibilityLabel: language.text(
+                        ar: "الإعدادات",
+                        en: "Settings",
+                        hi: "Settings",
+                        zh: "Settings",
+                        ku: "ڕێکخستن"
+                    ),
+                    action: onOpenSettings
+                )
+            }
+
+            VStack(alignment: isRTL ? .leading : .trailing, spacing: 1) {
+                Text(profileName)
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                Text(profileSubtitle)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.70))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x32469A), Color(hex: 0x5A78DE)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Circle()
+                    .stroke(Color.white.opacity(0.28), lineWidth: 1)
+
+                Image(systemName: "person.fill")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.white.opacity(0.95))
+            }
+            .frame(width: 36, height: 36)
+            .shadow(color: .black.opacity(0.24), radius: 6, x: 0, y: 3)
+        }
+    }
+
+    private func actionButton(
+        symbol: String,
+        tint: Color,
+        accessibilityLabel: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(.white.opacity(0.96))
+                .frame(width: 32, height: 32)
+                .background(
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(.ultraThinMaterial)
+
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [tint.opacity(0.46), tint.opacity(0.20)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    }
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(Color.white.opacity(0.24), lineWidth: 1)
+                    )
+                )
+        }
+        .buttonStyle(InteractivePressButtonStyle())
+        .shadow(color: tint.opacity(0.20), radius: 8, x: 0, y: 3)
+        .hoverEffect(.lift)
+        .accessibilityLabel(accessibilityLabel)
+    }
+}
+
+private struct MainMenuCardView: View {
+    let title: String
+    let subtitle: String
+    let symbol: String
+    let backgroundAsset: String
+    let colors: [Color]
+    let glow: Color
+    let tag: String?
+    let size: MainMenuCardSize
+    let language: AppLanguage
+
+    @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.mainMenuTilePressed) private var isTilePressed
+    @State private var hasAppeared = false
+
+    private var isRTL: Bool {
+        layoutDirection == .rightToLeft
+    }
+
+    private var isFeatured: Bool {
+        size == .featured
+    }
+
+    private var isSmall: Bool {
+        size == .small
+    }
+
+    private var cornerRadius: CGFloat {
+        switch size {
+        case .featured: return 28
+        case .medium: return 24
+        case .small: return 20
+        }
+    }
+
+    private var titleFontSize: CGFloat {
+        switch size {
+        case .featured: return 48
+        case .medium: return 34
+        case .small: return 21
+        }
+    }
+
+    private var subtitleFontSize: CGFloat {
+        switch size {
+        case .featured: return 16
+        case .medium: return 12
+        case .small: return 10.5
+        }
+    }
+
+    private var textStackSpacing: CGFloat {
+        switch size {
+        case .featured: return 9
+        case .medium: return 6
+        case .small: return 4
+        }
+    }
+
+    private var symbolFontSize: CGFloat {
+        switch size {
+        case .featured: return 146
+        case .medium: return 104
+        case .small: return 72
+        }
+    }
+
+    private var contentPadding: CGFloat {
+        switch size {
+        case .featured: return 20
+        case .medium: return 14
+        case .small: return 10
+        }
+    }
+
+    private var chevronControlSize: CGFloat {
+        switch size {
+        case .featured: return 36
+        case .medium: return 32
+        case .small: return 28
+        }
+    }
+
+    private var appearanceDelay: Double {
+        switch size {
+        case .featured: return 0.03
+        case .medium: return 0.06
+        case .small: return 0.09
+        }
+    }
+
+    private var cardShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+
+    private var accentStart: UnitPoint {
+        isRTL ? .trailing : .leading
+    }
+
+    private var accentEnd: UnitPoint {
+        isRTL ? .leading : .trailing
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let size = proxy.size
+
+            ZStack {
+                cardShape.fill(Color.black.opacity(0.92))
+                artworkLayer(in: size)
+                cinematicColorLayer
+                featuredSpotlightLayer(in: size)
+                textureOverlayLayer(in: size)
+                readabilityOverlayLayer(in: size)
+                textContentLayer
+            }
+            .clipShape(cardShape)
+            .overlay(borderLayer)
+            .overlay(innerShadowLayer)
+            .overlay(featuredHaloLayer)
+            .overlay(topAccentLayer, alignment: .topLeading)
+            .overlay(bottomSeparatorLayer, alignment: .bottom)
+            .overlay(sideAccentLayer, alignment: isRTL ? .trailing : .leading)
+            .scaleEffect(hasAppeared ? 1 : 0.985)
+            .opacity(hasAppeared ? 1 : 0.02)
+            .shadow(color: glow.opacity(isFeatured ? 0.30 : 0.16), radius: isFeatured ? 20 : 14, x: 0, y: 6)
+            .shadow(color: Color.black.opacity(0.44), radius: 14, x: 0, y: 8)
+            .onAppear {
+                guard !hasAppeared else { return }
+                withAnimation(.easeOut(duration: 0.32).delay(appearanceDelay)) {
+                    hasAppeared = true
+                }
+            }
+        }
+    }
+
+    private func artworkLayer(in size: CGSize) -> some View {
+        backgroundArtwork(in: size)
+            .clipShape(cardShape)
+            .overlay(
+                LinearGradient(
+                    colors: [Color.black.opacity(0.12), Color.black.opacity(isFeatured ? 0.34 : 0.28)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .overlay {
+                if isFeatured {
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.12), .clear],
+                        center: UnitPoint(x: isRTL ? 0.72 : 0.28, y: 0.20),
+                        startRadius: 10,
+                        endRadius: max(size.width, size.height) * 0.84
+                    )
+                    .blendMode(.screen)
+                }
+            }
+    }
+
+    private var cinematicColorLayer: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color.black.opacity(isFeatured ? 0.05 : 0.08), Color.black.opacity(0.18)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
+            LinearGradient(
+                colors: [glow.opacity(isFeatured ? 0.28 : 0.16), .clear],
+                startPoint: accentStart,
+                endPoint: .center
+            )
+        }
+    }
+
+    @ViewBuilder
+    private func featuredSpotlightLayer(in size: CGSize) -> some View {
+        if isFeatured {
+            ZStack {
+                Ellipse()
+                    .fill(Color.white.opacity(0.24))
+                    .frame(width: size.width * 0.86, height: size.height * 0.38)
+                    .blur(radius: 20)
+                    .offset(
+                        x: isRTL ? -size.width * 0.10 : size.width * 0.10,
+                        y: -size.height * 0.24
+                    )
+                    .blendMode(.screen)
+
+                RadialGradient(
+                    colors: [glow.opacity(0.34), glow.opacity(0.08), .clear],
+                    center: UnitPoint(x: isRTL ? 0.72 : 0.28, y: 0.22),
+                    startRadius: 8,
+                    endRadius: max(size.width, size.height) * 0.82
+                )
+            }
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func textureOverlayLayer(in size: CGSize) -> some View {
+        let lines = max(8, Int(size.height / 18))
+        let spacing = max(5, size.height / CGFloat(lines + 5))
+
+        return ZStack {
+            VStack(spacing: spacing) {
+                ForEach(0..<lines, id: \.self) { _ in
+                    Rectangle()
+                        .fill(Color.white.opacity(0.020))
+                        .frame(height: 1)
+                }
+            }
+            .padding(.horizontal, 8)
+            .rotationEffect(.degrees(-6))
+            .blendMode(.softLight)
+            .opacity(0.68)
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.00), Color.white.opacity(0.20), Color.white.opacity(0.00)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(width: size.width * 0.44)
+                .rotationEffect(.degrees(isRTL ? 26 : -26))
+                .offset(x: isRTL ? -size.width * 0.16 : size.width * 0.16, y: -size.height * 0.09)
+                .blendMode(.screen)
+                .opacity(isFeatured ? 0.50 : 0.34)
+        }
+    }
+
+    private func readabilityOverlayLayer(in size: CGSize) -> some View {
+        ZStack {
+            cardShape
+                .fill(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.06), Color.black.opacity(isFeatured ? 0.84 : 0.80)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.black.opacity(0.97), Color.black.opacity(isFeatured ? 0.76 : 0.70), .clear],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
+                .frame(height: isFeatured ? size.height * 0.50 : size.height * 0.58)
+                .frame(maxHeight: .infinity, alignment: .bottom)
+
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.black.opacity(isFeatured ? 0.50 : 0.44), .clear],
+                        startPoint: accentStart,
+                        endPoint: accentEnd
+                    )
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            Rectangle()
+                .fill(Color.black.opacity(isSmall ? 0.16 : 0.12))
+                .frame(height: isSmall ? 12 : 16)
+                .frame(maxHeight: .infinity, alignment: .top)
+        }
+    }
+
+    private var textContentLayer: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: textStackSpacing) {
+            if let tag, isFeatured {
+                Text(tag)
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                    .fill(Color.white.opacity(0.14))
+                            )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .stroke(Color.white.opacity(0.26), lineWidth: 1)
+                    )
+            }
+
+            Spacer(minLength: 0)
+
+            Text(title)
+                .font(.system(size: titleFontSize, weight: .black, design: .rounded))
+                .foregroundStyle(isFeatured ? .white : .white.opacity(0.96))
+                .lineLimit(1)
+                .minimumScaleFactor(isFeatured ? 0.76 : 0.74)
+                .kerning(isFeatured ? 0.42 : 0.18)
+                .padding(.bottom, isSmall ? 1 : 3)
+                .shadow(color: .black.opacity(0.74), radius: 5, x: 0, y: 2)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+            Text(subtitle)
+                .font(.system(size: subtitleFontSize, weight: .semibold))
+                .foregroundStyle(Color.white.opacity(isFeatured ? 0.86 : 0.76))
+                .lineLimit(isSmall ? 1 : 2)
+                .minimumScaleFactor(0.75)
+                .lineSpacing(1.4)
+                .multilineTextAlignment(isRTL ? .trailing : .leading)
+                .shadow(color: .black.opacity(0.52), radius: 2, x: 0, y: 1)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+            HStack {
+                if isRTL { nextChevron }
+                Spacer()
+                if !isRTL { nextChevron }
+            }
+        }
+        .padding(contentPadding)
+    }
+
+    private var innerShadowLayer: some View {
+        ZStack {
+            cardShape
+                .stroke(Color.black.opacity(0.48), lineWidth: isFeatured ? 8 : 6)
+                .blur(radius: 4)
+                .offset(y: 2.5)
+                .mask(cardShape)
+
+            cardShape
+                .inset(by: 1)
+                .stroke(Color.white.opacity(0.18), lineWidth: 1.4)
+                .blur(radius: 1.6)
+                .offset(y: -1)
+                .mask(cardShape)
+        }
+    }
+
+    @ViewBuilder
+    private var featuredHaloLayer: some View {
+        if isFeatured {
+            cardShape
+                .stroke(
+                    LinearGradient(
+                        colors: [glow.opacity(0.96), glow.opacity(0.36), Color.clear],
+                        startPoint: accentStart,
+                        endPoint: accentEnd
+                    ),
+                    lineWidth: 1.4
+                )
+                .shadow(color: glow.opacity(0.40), radius: 14, x: 0, y: 0)
+        }
+    }
+
+    private var borderLayer: some View {
+        ZStack {
+            cardShape
+                .stroke(Color.white.opacity(isFeatured ? 0.22 : 0.16), lineWidth: 1)
+
+            cardShape
+                .inset(by: 1.2)
+                .stroke(glow.opacity(isFeatured ? 0.26 : 0.14), lineWidth: 0.8)
+                .blendMode(.screen)
+
+            cardShape
+                .inset(by: 2.2)
+                .stroke(Color.black.opacity(0.38), lineWidth: 0.9)
+        }
+    }
+
+    private var topAccentLayer: some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [glow.opacity(0.70), glow.opacity(0.16), .clear],
+                    startPoint: accentStart,
+                    endPoint: accentEnd
+                )
+            )
+            .frame(height: isFeatured ? 3 : 2.5)
+    }
+
+    private var bottomSeparatorLayer: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.12))
+            .frame(height: 1)
+            .padding(.horizontal, 12)
+    }
+
+    private var sideAccentLayer: some View {
+        Rectangle()
+            .fill(glow.opacity(isFeatured ? 0.28 : 0.18))
+            .frame(width: isFeatured ? 3 : 2.5)
+    }
+
+    @ViewBuilder
+    private func backgroundArtwork(in size: CGSize) -> some View {
+        if let image = UIImage(named: backgroundAsset) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size.width, height: size.height)
+                .clipped()
+        } else {
+            // Fallback backdrop when dedicated art assets are not in the catalog yet.
+            ZStack {
+                LinearGradient(
+                    colors: colors,
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+
+                AngularGradient(
+                    colors: [Color.white.opacity(0.20), Color.clear, glow.opacity(0.26), Color.clear],
+                    center: UnitPoint(x: isRTL ? 0.78 : 0.22, y: 0.28)
+                )
+                .blendMode(.screen)
+
+                Ellipse()
+                    .fill(Color.white.opacity(0.30))
+                    .frame(width: size.width * 0.42, height: size.height * 0.56)
+                    .blur(radius: 18)
+                    .offset(
+                        x: isRTL ? -size.width * 0.36 : size.width * 0.36,
+                        y: -size.height * 0.36
+                    )
+
+                RadialGradient(
+                    colors: [glow.opacity(0.52), glow.opacity(0.14), .clear],
+                    center: UnitPoint(x: isRTL ? 0.78 : 0.22, y: 0.21),
+                    startRadius: 12,
+                    endRadius: max(size.width, size.height) * 0.82
+                )
+
+                Image(systemName: symbol)
+                    .font(.system(size: symbolFontSize, weight: .black))
+                    .foregroundStyle(
+                        .white.opacity(
+                            isFeatured ? 0.10 : (isSmall ? 0.12 : 0.16)
+                        )
+                    )
+                    .offset(
+                        x: isRTL ? -size.width * 0.20 : size.width * 0.20,
+                        y: isFeatured ? -size.height * 0.04 : -size.height * 0.09
+                    )
+                    .blur(radius: isFeatured ? 0.7 : 0)
+
+                VStack(spacing: size.height * 0.078) {
+                    ForEach(0..<6, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color.white.opacity(0.050))
+                            .frame(height: 1)
+                    }
+                }
+                .padding(.horizontal, 10)
+            }
+            .frame(width: size.width, height: size.height)
+        }
+    }
+
+    private var nextChevron: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: isSmall ? 11.5 : 13, style: .continuous)
+                .fill(.ultraThinMaterial)
+
+            RoundedRectangle(cornerRadius: isSmall ? 11.5 : 13, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.18), Color.white.opacity(0.06)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            RoundedRectangle(cornerRadius: isSmall ? 11.5 : 13, style: .continuous)
+                .stroke(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.58), Color.white.opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    lineWidth: 1
+                )
+
+            Image(systemName: isRTL ? "arrow.left" : "arrow.right")
+                .font(.system(size: isSmall ? 11 : 12, weight: .black))
+                .foregroundStyle(.white.opacity(0.94))
+        }
+        .frame(width: chevronControlSize, height: chevronControlSize)
+        .scaleEffect(isTilePressed ? 0.90 : 1)
+        .shadow(color: glow.opacity(isFeatured ? 0.34 : 0.20), radius: 8, x: 0, y: 3)
+        .animation(.spring(response: 0.24, dampingFraction: 0.70), value: isTilePressed)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct TeamHubPremiumCard: View {
+    let card: TeamHubCard
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: false)) { timeline in
+            GeometryReader { proxy in
+                let size = proxy.size
+                let phaseTime = timeline.date.timeIntervalSinceReferenceDate + card.phase
+                let gradientDrift = (sin(phaseTime * 0.55) + 1) / 2
+                let pulse = (sin(phaseTime * 1.30) + 1) / 2
+                let shimmerCycle = phaseTime.truncatingRemainder(dividingBy: 6.2) / 6.2
+                let shimmerOffset = (CGFloat(shimmerCycle) * 2.4 - 0.8) * size.width
+                let orbX = CGFloat(sin(phaseTime * 0.72)) * size.width * 0.22
+                let orbY = CGFloat(cos(phaseTime * 0.64)) * size.height * 0.14
+                let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
+                let isTransferCenterTitle = card.title == "مركز الانتقالات"
+                let titleSize: CGFloat = isTransferCenterTitle ? 32 : 40
+                let titleTrailingInset: CGFloat = 92
+                let titleLeadingInset: CGFloat = 26
+                let titleScale: CGFloat = isTransferCenterTitle ? 0.76 : 0.68
+
+                ZStack {
+                    shape
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    card.colors[0].opacity(0.95),
+                                    card.colors[1].opacity(0.94),
+                                    card.colors[0].opacity(0.86)
+                                ],
+                                startPoint: UnitPoint(x: 0.10 + CGFloat(gradientDrift) * 0.48, y: 0.02),
+                                endPoint: UnitPoint(x: 0.92 - CGFloat(gradientDrift) * 0.38, y: 1.02)
+                            )
+                        )
+
+                    Circle()
+                        .fill(card.glowColor.opacity(0.30))
+                        .frame(width: size.height * 1.35, height: size.height * 1.35)
+                        .blur(radius: 16)
+                        .offset(x: orbX, y: -size.height * 0.28 + orbY)
+
+                    shape
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.22), Color.white.opacity(0.03)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .blendMode(.screen)
+
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.0),
+                                    Color.white.opacity(0.0),
+                                    Color.white.opacity(0.32),
+                                    Color.white.opacity(0.0),
+                                    Color.white.opacity(0.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: size.width * 0.62)
+                        .rotationEffect(.degrees(-17))
+                        .offset(x: shimmerOffset)
+                        .blur(radius: 0.6)
+                        .blendMode(.screen)
+
+                    shape
+                        .stroke(Color.white.opacity(0.16), lineWidth: 0.9)
+
+                    shape
+                        .stroke(card.glowColor.opacity(0.60), lineWidth: 1.25)
+                        .shadow(
+                            color: card.glowColor.opacity(0.26 + 0.16 * pulse),
+                            radius: 12 + 8 * pulse,
+                            x: 0,
+                            y: 0
+                        )
+
+                    Text(card.title)
+                        .font(.system(size: titleSize, weight: .bold, design: .rounded))
+                        .foregroundStyle(FootballTheme.textPrimary)
+                        .lineLimit(isTransferCenterTitle ? 2 : 1)
+                        .minimumScaleFactor(titleScale)
+                        .allowsTightening(true)
+                        .multilineTextAlignment(.trailing)
+                        .padding(.leading, titleLeadingInset)
+                        .padding(.trailing, titleTrailingInset)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+
+                    iconBadge(pulse: pulse)
+                        .padding(.trailing, 22)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+
+                    shape
+                        .stroke(Color.white.opacity(0.10), lineWidth: 0.6)
+                        .blur(radius: 0.8)
+                        .offset(y: 0.4)
+                }
+                .clipShape(shape)
+                .shadow(color: .black.opacity(0.28), radius: 14, x: 0, y: 9)
+                .shadow(color: card.glowColor.opacity(0.30), radius: 22, x: 0, y: 10)
+            }
+        }
+    }
+
+    private func iconBadge(pulse: Double) -> some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.24), Color.white.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+
+            Circle()
+                .stroke(Color.white.opacity(0.32), lineWidth: 1.0)
+
+            Circle()
+                .stroke(card.glowColor.opacity(0.35), lineWidth: 1.1)
+                .blur(radius: 0.4)
+
+            Image(systemName: card.icon)
+                .font(.system(size: 27, weight: .bold))
+                .foregroundStyle(Color.white.opacity(0.96))
+                .shadow(color: card.glowColor.opacity(0.45), radius: 8 + 4 * pulse, x: 0, y: 0)
+        }
+        .frame(width: 64, height: 64)
+    }
+}
+
+private struct TeamManagementPortraitView: View {
+    private enum TeamSectionTab: CaseIterable, Identifiable {
+        case lineup
+        case tactics
+        case instructions
+        case bench
+
+        var id: String {
+            switch self {
+            case .lineup: return "lineup"
+            case .tactics: return "tactics"
+            case .instructions: return "instructions"
+            case .bench: return "bench"
+            }
+        }
+    }
+
+    let language: AppLanguage
+    @Binding var lineup: [TeamPlayer]
+    @Binding var bench: [TeamPlayer]
+    @Binding var tacticalPlan: TacticalPlan
+    let onClose: () -> Void
+
+    @State private var activeTab: TeamSectionTab = .lineup
+    @State private var workingLineup: [TeamPlayer] = []
+    @State private var workingBench: [TeamPlayer] = []
+    @State private var baselineLineup: [TeamPlayer] = []
+    @State private var baselineBench: [TeamPlayer] = []
+    @State private var baselinePlan: TacticalPlan = .fourThreeThree
+
+    @State private var selectedStarterID: UUID?
+    @State private var selectedBenchID: UUID?
+
+    @State private var pressingValue = 62.0
+    @State private var compactnessValue = 56.0
+    @State private var tempoValue = 58.0
+
+    @State private var statusMessage = ""
+    @State private var statusVisible = false
+
+    @Namespace private var tabsNamespace
+
+    private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+        language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+    }
+
+    var body: some View {
+        GeometryReader { proxy in
+            let contentWidth = min(proxy.size.width - 24, 430)
+            let pitchHeight = min(max(proxy.size.height * 0.44, 286), 396)
+
+            ZStack {
+                backgroundLayer
+
+                VStack(spacing: 10) {
+                    headerBar
+                    tabsBar
+
+                    if activeTab == .tactics {
+                        tacticsStrip
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    if activeTab == .instructions {
+                        instructionsStrip
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
+                    pitchSection(height: pitchHeight)
+                    benchSection
+                    selectionHint
+
+                    if statusVisible {
+                        statusPill
+                    }
+                }
+                .frame(width: contentWidth)
+                .padding(.top, 8)
+                .padding(.bottom, 6)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .safeAreaInset(edge: .bottom) {
+            controlBar
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+        }
+        .environment(\.layoutDirection, .rightToLeft)
+        .animation(.easeInOut(duration: 0.22), value: activeTab)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: selectedStarterID)
+        .animation(.spring(response: 0.30, dampingFraction: 0.80), value: selectedBenchID)
+        .onAppear {
+            bootstrapState()
+        }
+    }
+
+    private var backgroundLayer: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: 0x050815), Color(hex: 0x0B1F3F), Color(hex: 0x081A30)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [Color(hex: 0x22C4FF, alpha: 0.24), Color.clear],
+                center: .topTrailing,
+                startRadius: 40,
+                endRadius: 280
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [Color(hex: 0x7E95FF, alpha: 0.17), Color.clear],
+                center: .bottomLeading,
+                startRadius: 20,
+                endRadius: 250
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private var headerBar: some View {
+        ZStack {
+            VStack(spacing: 3) {
+                Text(t(ar: "إدارة الفريق", en: "Team Management", hi: "टीम प्रबंधन", zh: "球队管理", ku: "بەڕێوەبردنی تیم"))
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text("\(t(ar: "الخطة", en: "Plan", hi: "योजना", zh: "阵型", ku: "پلان")): \(tacticalPlan.rawValue)")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
+            HStack {
+                Button {
+                    onClose()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .black))
+                        Text(t(ar: "رجوع", en: "Back", hi: "वापस", zh: "返回", ku: "گەڕانەوە"))
+                            .font(.system(size: 13, weight: .black))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.10))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
+
+                Spacer()
+            }
+        }
+    }
+
+    private var tabsBar: some View {
+        HStack(spacing: 8) {
+            ForEach(TeamSectionTab.allCases) { tab in
+                Button {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                        activeTab = tab
+                    }
+                } label: {
+                    VStack(spacing: 4) {
+                        Image(systemName: tabIcon(tab))
+                            .font(.system(size: 14, weight: .black))
+                        Text(tabTitle(tab))
+                            .font(.system(size: 12, weight: .bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.80)
+                    }
+                    .foregroundStyle(activeTab == tab ? .black : .white.opacity(0.86))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 52)
+                    .background(
+                        ZStack {
+                            if activeTab == tab {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(FootballTheme.pitchGreen)
+                                    .matchedGeometryEffect(id: "team-tab-active", in: tabsNamespace)
+                            } else {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(Color.white.opacity(0.07))
+                            }
+                        }
+                    )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.black.opacity(0.28))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                )
+        )
+    }
+
+    private var tacticsStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(TacticalPlan.allCases, id: \.self) { plan in
+                    Button {
+                        withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                            tacticalPlan = plan
+                        }
+                    } label: {
+                        VStack(spacing: 3) {
+                            Text(plan.rawValue)
+                                .font(.system(size: 14, weight: .black))
+                            Text(plan.localizedStyleName(in: language))
+                                .font(.system(size: 11, weight: .semibold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
+                        }
+                        .foregroundStyle(tacticalPlan == plan ? .black : .white.opacity(0.88))
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(tacticalPlan == plan ? FootballTheme.accentCyan : Color.white.opacity(0.09))
+                        )
+                    }
+                    .buttonStyle(InteractivePressButtonStyle())
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private var instructionsStrip: some View {
+        VStack(spacing: 8) {
+            instructionRow(
+                title: t(ar: "مستوى الضغط", en: "Pressing", hi: "प्रेसिंग", zh: "压迫", ku: "فشار"),
+                icon: "bolt.fill",
+                value: $pressingValue
+            )
+            instructionRow(
+                title: t(ar: "تماسك الخطوط", en: "Compactness", hi: "सघनता", zh: "阵型紧凑", ku: "توندی هێڵەکان"),
+                icon: "line.3.horizontal.decrease.circle.fill",
+                value: $compactnessValue
+            )
+            instructionRow(
+                title: t(ar: "سرعة التحول", en: "Transition Pace", hi: "ट्रांज़िशन गति", zh: "转换节奏", ku: "خێرایی گواستنەوە"),
+                icon: "hare.fill",
+                value: $tempoValue
+            )
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                )
+        )
+    }
+
+    private func instructionRow(title: String, icon: String, value: Binding<Double>) -> some View {
+        VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(FootballTheme.accentCyan)
+                Text(title)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.90))
+                Spacer()
+                Text("\(Int(value.wrappedValue))")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.white.opacity(0.76))
+            }
+
+            Slider(value: value, in: 25...100, step: 1)
+                .tint(FootballTheme.accentCyan)
+        }
+    }
+
+    private func pitchSection(height: CGFloat) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x144433, alpha: 0.84), Color(hex: 0x1D6A50, alpha: 0.80)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+
+            GeometryReader { geo in
+                let positions = pitchPositions(for: tacticalPlan)
+
+                ZStack {
+                    pitchMarkings(size: geo.size)
+                    pitchZonesOverlay
+
+                    ForEach(Array(workingLineup.enumerated()), id: \.element.id) { idx, player in
+                        let point = positions[min(idx, positions.count - 1)]
+
+                        starterCard(player)
+                            .position(x: geo.size.width * point.x, y: geo.size.height * point.y)
+                            .onTapGesture {
+                                handleStarterTap(player.id)
+                            }
+                    }
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .stroke(Color.white.opacity(0.38), lineWidth: 1.2)
+        }
+        .frame(height: height)
+        .shadow(color: Color.black.opacity(0.30), radius: 16, x: 0, y: 10)
+        .shadow(color: FootballTheme.accentCyan.opacity(0.16), radius: 16, x: 0, y: 8)
+    }
+
+    private func pitchMarkings(size: CGSize) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(Color.white.opacity(0.52), lineWidth: 1.2)
+                .padding(14)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.55))
+                .frame(width: size.width - 36, height: 1.1)
+                .position(x: size.width / 2, y: size.height / 2)
+
+            Circle()
+                .stroke(Color.white.opacity(0.62), lineWidth: 1.2)
+                .frame(width: 74, height: 74)
+                .position(x: size.width / 2, y: size.height / 2)
+
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(Color.white.opacity(0.62), lineWidth: 1.1)
+                .frame(width: size.width * 0.46, height: size.height * 0.16)
+                .position(x: size.width / 2, y: size.height * 0.08)
+
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(Color.white.opacity(0.62), lineWidth: 1.1)
+                .frame(width: size.width * 0.46, height: size.height * 0.16)
+                .position(x: size.width / 2, y: size.height * 0.92)
+        }
+    }
+
+    private var pitchZonesOverlay: some View {
+        VStack {
+            zoneTag(t(ar: "هجوم", en: "Attack", hi: "आक्रमण", zh: "进攻", ku: "هێرش"))
+            Spacer()
+            zoneTag(t(ar: "وسط", en: "Midfield", hi: "मिडफ़ील्ड", zh: "中场", ku: "ناوەڕاست"))
+            Spacer()
+            zoneTag(t(ar: "دفاع", en: "Defense", hi: "रक्षा", zh: "防守", ku: "بەرگری"))
+            Spacer()
+            zoneTag(t(ar: "حارس", en: "Goalkeeper", hi: "गोलकीपर", zh: "门将", ku: "گۆڵپارێز"))
+        }
+        .padding(.vertical, 16)
+        .padding(.trailing, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+    }
+
+    private func zoneTag(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .black))
+            .foregroundStyle(.white.opacity(0.76))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.16))
+            )
+    }
+
+    private func starterCard(_ player: TeamPlayer) -> some View {
+        let isSelected = selectedStarterID == player.id
+        let readiness = readinessPercent(for: player)
+        let cardFill = isSelected ? FootballTheme.pointsYellow.opacity(0.94) : Color.white.opacity(0.14)
+        let textColor: Color = isSelected ? .black : .white
+
+        return VStack(spacing: 2) {
+            Text(compactPlayerName(player))
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(textColor.opacity(0.94))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            HStack(spacing: 3) {
+                Text(player.role)
+                    .font(.system(size: 9, weight: .black))
+                Text("•")
+                    .font(.system(size: 8, weight: .black))
+                Text("\(playerRating(for: player))")
+                    .font(.system(size: 9, weight: .black))
+            }
+            .foregroundStyle(textColor.opacity(0.86))
+
+            readinessBar(percent: readiness, isSelected: isSelected)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .frame(width: 88)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(cardFill)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isSelected ? Color.white.opacity(0.95) : Color.white.opacity(0.28), lineWidth: isSelected ? 1.8 : 0.9)
+        )
+        .shadow(color: isSelected ? FootballTheme.pointsYellow.opacity(0.56) : Color.black.opacity(0.20), radius: isSelected ? 12 : 4, x: 0, y: isSelected ? 6 : 2)
+        .accessibilityLabel("\(compactPlayerName(player)) \(player.role)")
+    }
+
+    private func readinessBar(percent: Int, isSelected: Bool) -> some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(readinessColor(percent))
+                .frame(width: 6, height: 6)
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill((isSelected ? Color.black : Color.white).opacity(0.16))
+                    Capsule()
+                        .fill(readinessColor(percent))
+                        .frame(width: geo.size.width * CGFloat(percent) / 100.0)
+                }
+            }
+            .frame(height: 5)
+        }
+        .frame(height: 7)
+    }
+
+    private var benchSection: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            HStack {
+                Text(t(ar: "البدلاء", en: "Bench", hi: "बेंच", zh: "替补", ku: "ئەندامانی یەدەک"))
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Spacer()
+
+                Text("\(workingBench.count) \(t(ar: "لاعب", en: "players", hi: "खिलाड़ी", zh: "球员", ku: "یاریزان"))")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(workingBench) { player in
+                        benchCard(player)
+                    }
+                }
+                .padding(.horizontal, 2)
+                .padding(.vertical, 2)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(0.28))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                )
+        )
+    }
+
+    private func benchCard(_ player: TeamPlayer) -> some View {
+        let isSelected = selectedBenchID == player.id
+        let readiness = readinessPercent(for: player)
+
+        return Button {
+            handleBenchTap(player.id)
+        } label: {
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(compactPlayerName(player))
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(isSelected ? .black : .white.opacity(0.94))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.74)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                HStack(spacing: 6) {
+                    Text("\(playerRating(for: player))")
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(isSelected ? .black.opacity(0.88) : FootballTheme.pointsYellow)
+
+                    Text(player.role)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(isSelected ? .black.opacity(0.86) : .white.opacity(0.82))
+
+                    Spacer(minLength: 0)
+                }
+
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(readinessColor(readiness))
+                        .frame(width: 6, height: 6)
+                    Text("\(readiness)%")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(isSelected ? .black.opacity(0.80) : .white.opacity(0.74))
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .frame(width: 132, height: 82)
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(isSelected ? FootballTheme.accentCyan : Color.white.opacity(0.08))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.95) : Color.white.opacity(0.18), lineWidth: isSelected ? 1.7 : 1)
+            )
+            .shadow(color: isSelected ? FootballTheme.accentCyan.opacity(0.40) : Color.black.opacity(0.14), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var selectionHint: some View {
+        Text(selectionHintText())
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.75))
+            .frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private func selectionHintText() -> String {
+        if selectedStarterID != nil {
+            return t(
+                ar: "تم تحديد لاعب أساسي. اضغط لاعبًا آخر للتبديل أو اختر بديلًا.",
+                en: "Starter selected. Tap another starter or a bench player to swap.",
+                hi: "स्टार्टर चुना गया। अदला-बदली के लिए दूसरा खिलाड़ी चुनें।",
+                zh: "已选首发，点击其他球员或替补进行交换。",
+                ku: "یاریزانی سەرەکی هەڵبژێردرا. یاریزانێکی تر یان یەدەک هەڵبژێرە بۆ گۆڕین."
+            )
+        }
+
+        if selectedBenchID != nil {
+            return t(
+                ar: "تم تحديد لاعب احتياطي. اختر لاعبًا أساسيًا لإتمام التبديل.",
+                en: "Bench player selected. Tap a starter to complete the swap.",
+                hi: "बेंच खिलाड़ी चुना गया। अदला-बदली के लिए स्टार्टर चुनें।",
+                zh: "已选替补，请点击首发完成交换。",
+                ku: "یاریزانی یەدەک هەڵبژێردرا. یاریزانێکی سەرەکی هەڵبژێرە بۆ تەواوکردنی گۆڕین."
+            )
+        }
+
+        return t(
+            ar: "اضغط أي لاعب لتحديده.",
+            en: "Tap any player to select.",
+            hi: "चुनने के लिए किसी खिलाड़ी पर टैप करें।",
+            zh: "点击任意球员进行选择。",
+            ku: "بۆ هەڵبژاردن لەسەر هەر یاریزانێک بکە."
+        )
+    }
+
+    private var statusPill: some View {
+        Text(statusMessage)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.34))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.92)))
+    }
+
+    private var controlBar: some View {
+        HStack(spacing: 8) {
+            controlButton(
+                title: t(ar: "حفظ", en: "Save", hi: "सेव", zh: "保存", ku: "هەڵگرتن"),
+                icon: "checkmark.circle.fill",
+                fill: FootballTheme.pitchGreen,
+                foreground: .black
+            ) {
+                saveChanges()
+            }
+
+            controlButton(
+                title: t(ar: "إعادة ضبط", en: "Reset", hi: "रीसेट", zh: "重置", ku: "نوێکردنەوە"),
+                icon: "arrow.counterclockwise.circle.fill",
+                fill: Color.white.opacity(0.14),
+                foreground: .white
+            ) {
+                resetChanges()
+            }
+
+            controlButton(
+                title: t(ar: "تبديل تلقائي", en: "Auto Swap", hi: "ऑटो स्वैप", zh: "自动轮换", ku: "گۆڕینی خۆکار"),
+                icon: "shuffle.circle.fill",
+                fill: FootballTheme.accentCyan,
+                foreground: .black
+            ) {
+                autoSwap()
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .fill(Color.black.opacity(0.40))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+        )
+        .shadow(color: Color.black.opacity(0.28), radius: 12, x: 0, y: 6)
+    }
+
+    private func controlButton(title: String, icon: String, fill: Color, foreground: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 2) {
+                Image(systemName: icon)
+                    .font(.system(size: 14, weight: .black))
+                Text(title)
+                    .font(.system(size: 12, weight: .black))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+            }
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(fill)
+            )
+        }
+        .buttonStyle(InteractivePressButtonStyle())
+    }
+
+    private func tabTitle(_ tab: TeamSectionTab) -> String {
+        switch tab {
+        case .lineup:
+            return t(ar: "التشكيلة", en: "Lineup", hi: "लाइनअप", zh: "阵容", ku: "پێکهاتە")
+        case .tactics:
+            return t(ar: "التكتيك", en: "Tactics", hi: "रणनीति", zh: "战术", ku: "تەکتیک")
+        case .instructions:
+            return t(ar: "التعليمات", en: "Instructions", hi: "निर्देश", zh: "指令", ku: "ڕێنمایی")
+        case .bench:
+            return t(ar: "البدلاء", en: "Bench", hi: "बेंच", zh: "替补", ku: "یەدەک")
+        }
+    }
+
+    private func tabIcon(_ tab: TeamSectionTab) -> String {
+        switch tab {
+        case .lineup: return "sportscourt.fill"
+        case .tactics: return "target"
+        case .instructions: return "slider.horizontal.3"
+        case .bench: return "person.3.sequence.fill"
+        }
+    }
+
+    private func compactPlayerName(_ player: TeamPlayer) -> String {
+        let localized = localizedDisplayName(player.name, in: language)
+        let parts = localized.split(separator: " ")
+        if parts.count >= 2 {
+            return "\(parts[0]) \(parts[1])"
+        }
+        return String(localized.prefix(14))
+    }
+
+    private func playerRating(for player: TeamPlayer) -> Int {
+        let roleSeed = player.role.unicodeScalars.reduce(0) { partial, scalar in
+            partial + Int(scalar.value)
+        }
+        let base = 68 + ((player.number * 11 + roleSeed) % 24)
+        return min(max(base, 65), 95)
+    }
+
+    private func readinessPercent(for player: TeamPlayer) -> Int {
+        let roleSeed = player.role.unicodeScalars.reduce(0) { partial, scalar in
+            partial + Int(scalar.value)
+        }
+        return 60 + ((player.number * 17 + roleSeed) % 36)
+    }
+
+    private func readinessColor(_ percent: Int) -> Color {
+        if percent >= 84 { return FootballTheme.accentGreen }
+        if percent >= 72 { return FootballTheme.pointsYellow }
+        return FootballTheme.dangerRed
+    }
+
+    private func bootstrapState() {
+        workingLineup = lineup
+        workingBench = bench
+        baselineLineup = lineup
+        baselineBench = bench
+        baselinePlan = tacticalPlan
+        selectedStarterID = nil
+        selectedBenchID = nil
+    }
+
+    private func saveChanges() {
+        lineup = workingLineup
+        bench = workingBench
+        baselineLineup = workingLineup
+        baselineBench = workingBench
+        baselinePlan = tacticalPlan
+        showStatus(
+            t(ar: "تم حفظ التعديلات", en: "Changes saved", hi: "बदलाव सेव हुए", zh: "已保存更改", ku: "گۆڕانکارییەکان هەڵگیران")
+        )
+    }
+
+    private func resetChanges() {
+        workingLineup = baselineLineup
+        workingBench = baselineBench
+        tacticalPlan = baselinePlan
+        selectedStarterID = nil
+        selectedBenchID = nil
+        showStatus(
+            t(ar: "تمت إعادة الضبط", en: "Reset completed", hi: "रीसेट पूरा हुआ", zh: "已重置", ku: "ڕێکخستنەکان نوێکرانەوە")
+        )
+    }
+
+    private func autoSwap() {
+        guard !workingLineup.isEmpty, !workingBench.isEmpty else { return }
+
+        guard
+            let weakestStarter = workingLineup.indices.min(by: { idxA, idxB in
+                readinessPercent(for: workingLineup[idxA]) < readinessPercent(for: workingLineup[idxB])
+            }),
+            let strongestBench = workingBench.indices.max(by: { idxA, idxB in
+                readinessPercent(for: workingBench[idxA]) < readinessPercent(for: workingBench[idxB])
+            })
+        else { return }
+
+        let starterReadiness = readinessPercent(for: workingLineup[weakestStarter])
+        let benchReadiness = readinessPercent(for: workingBench[strongestBench])
+
+        guard benchReadiness > starterReadiness else {
+            showStatus(
+                t(ar: "التشكيلة الأساسية جاهزة حاليًا", en: "Starting lineup is already optimized", hi: "स्टार्टिंग लाइनअप पहले से बेहतर है", zh: "首发当前已较优", ku: "پێکهاتەی سەرەکی لە ئێستادا باشە")
+            )
+            return
+        }
+
+        swapStarterWithBench(starterIndex: weakestStarter, benchIndex: strongestBench)
+        showStatus(
+            t(ar: "تم تنفيذ تبديل تلقائي", en: "Auto swap completed", hi: "ऑटो स्वैप पूरा हुआ", zh: "已完成自动轮换", ku: "گۆڕینی خۆکار ئەنجامدرا")
+        )
+    }
+
+    private func handleStarterTap(_ playerID: UUID) {
+        if let selectedBenchID {
+            swapSelectedStarterWithBench(starterID: playerID, benchID: selectedBenchID)
+            return
+        }
+
+        if let currentStarterID = selectedStarterID, currentStarterID != playerID {
+            swapStarterPositions(firstID: currentStarterID, secondID: playerID)
+            selectedStarterID = nil
+            showStatus(
+                t(ar: "تم تبديل مراكز لاعبين أساسيين", en: "Starters swapped", hi: "स्टार्टर बदले गए", zh: "首发球员已互换", ku: "شوێنی دوو یاریزانی سەرەکی گۆڕدرا")
+            )
+            return
+        }
+
+        selectedStarterID = (selectedStarterID == playerID) ? nil : playerID
+        selectedBenchID = nil
+    }
+
+    private func handleBenchTap(_ playerID: UUID) {
+        if let starterID = selectedStarterID {
+            swapSelectedStarterWithBench(starterID: starterID, benchID: playerID)
+            return
+        }
+
+        selectedBenchID = (selectedBenchID == playerID) ? nil : playerID
+        selectedStarterID = nil
+    }
+
+    private func swapSelectedStarterWithBench(starterID: UUID, benchID: UUID) {
+        guard
+            let starterIndex = workingLineup.firstIndex(where: { $0.id == starterID }),
+            let benchIndex = workingBench.firstIndex(where: { $0.id == benchID })
+        else { return }
+
+        swapStarterWithBench(starterIndex: starterIndex, benchIndex: benchIndex)
+        showStatus(
+            t(ar: "تم تبديل لاعب أساسي مع بديل", en: "Starter swapped with bench player", hi: "स्टार्टर और बेंच खिलाड़ी बदले गए", zh: "首发与替补已互换", ku: "یاریزانی سەرەکی لەگەڵ یەدەک گۆڕدرا")
+        )
+    }
+
+    private func swapStarterWithBench(starterIndex: Int, benchIndex: Int) {
+        let starter = workingLineup[starterIndex]
+        workingLineup[starterIndex] = workingBench[benchIndex]
+        workingBench[benchIndex] = starter
+        selectedStarterID = nil
+        selectedBenchID = nil
+    }
+
+    private func swapStarterPositions(firstID: UUID, secondID: UUID) {
+        guard
+            let firstIndex = workingLineup.firstIndex(where: { $0.id == firstID }),
+            let secondIndex = workingLineup.firstIndex(where: { $0.id == secondID })
+        else { return }
+
+        workingLineup.swapAt(firstIndex, secondIndex)
+        selectedBenchID = nil
+    }
+
+    private func showStatus(_ message: String) {
+        statusMessage = message
+        withAnimation(.easeInOut(duration: 0.2)) {
+            statusVisible = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                statusVisible = false
+            }
+        }
+    }
+
+    private func pitchPositions(for plan: TacticalPlan) -> [CGPoint] {
+        switch plan {
+        case .fourThreeThree:
+            return [
+                CGPoint(x: 0.5, y: 0.90),
+                CGPoint(x: 0.82, y: 0.75),
+                CGPoint(x: 0.62, y: 0.70),
+                CGPoint(x: 0.38, y: 0.70),
+                CGPoint(x: 0.18, y: 0.75),
+                CGPoint(x: 0.50, y: 0.58),
+                CGPoint(x: 0.65, y: 0.49),
+                CGPoint(x: 0.35, y: 0.49),
+                CGPoint(x: 0.78, y: 0.33),
+                CGPoint(x: 0.50, y: 0.24),
+                CGPoint(x: 0.22, y: 0.33)
+            ]
+        case .fourTwoThreeOne:
+            return [
+                CGPoint(x: 0.5, y: 0.90),
+                CGPoint(x: 0.82, y: 0.77),
+                CGPoint(x: 0.62, y: 0.73),
+                CGPoint(x: 0.38, y: 0.73),
+                CGPoint(x: 0.18, y: 0.77),
+                CGPoint(x: 0.60, y: 0.60),
+                CGPoint(x: 0.40, y: 0.60),
+                CGPoint(x: 0.80, y: 0.45),
+                CGPoint(x: 0.50, y: 0.42),
+                CGPoint(x: 0.20, y: 0.45),
+                CGPoint(x: 0.50, y: 0.24)
+            ]
+        case .threeFiveTwo:
+            return [
+                CGPoint(x: 0.5, y: 0.90),
+                CGPoint(x: 0.72, y: 0.74),
+                CGPoint(x: 0.50, y: 0.71),
+                CGPoint(x: 0.28, y: 0.74),
+                CGPoint(x: 0.85, y: 0.56),
+                CGPoint(x: 0.65, y: 0.56),
+                CGPoint(x: 0.50, y: 0.52),
+                CGPoint(x: 0.35, y: 0.56),
+                CGPoint(x: 0.15, y: 0.56),
+                CGPoint(x: 0.62, y: 0.30),
+                CGPoint(x: 0.38, y: 0.30)
+            ]
+        }
+    }
+}
+
+private struct TeamCenterPlayersView: View {
+    private enum SquadFilter: CaseIterable, Identifiable {
+        case all
+        case starters
+        case bench
+
+        var id: String {
+            switch self {
+            case .all: return "all"
+            case .starters: return "starters"
+            case .bench: return "bench"
+            }
+        }
+    }
+
+    private struct PlayerEntry: Identifiable, Hashable {
+        let player: TeamPlayer
+        let isStarter: Bool
+
+        var id: UUID { player.id }
+
+        static func == (lhs: PlayerEntry, rhs: PlayerEntry) -> Bool {
+            lhs.id == rhs.id
+        }
+
+        func hash(into hasher: inout Hasher) {
+            hasher.combine(id)
+        }
+    }
+
+    private struct PlayerProfileData {
+        let overall: Int
+        let age: Int
+        let nationality: String
+        let heightCM: Int
+        let weightKG: Int
+        let birthDateText: String
+        let preferredFoot: String
+        let readiness: Int
+        let fitnessStatus: String
+        let marketValueM: Int
+        let contractYears: Int
+        let contractUntil: String
+    }
+
+    private struct InfoTile: Identifiable {
+        let id = UUID()
+        let title: String
+        let value: String
+        let tint: Color
+    }
+
+    private enum SquadUnit {
+        case attack
+        case midfield
+        case defense
+        case goalkeeper
+    }
+
+    let language: AppLanguage
+    let lineup: [TeamPlayer]
+    let bench: [TeamPlayer]
+    let onClose: () -> Void
+
+    @State private var activeFilter: SquadFilter = .all
+    @State private var selectedPlayerForDetails: PlayerEntry?
+    @State private var highlightedPlayerID: UUID?
+    @State private var listAnimateIn = false
+
+    @Namespace private var listNamespace
+
+    private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+        language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+    }
+
+    private var allPlayers: [PlayerEntry] {
+        let starters = lineup.map { PlayerEntry(player: $0, isStarter: true) }
+        let reserves = bench.map { PlayerEntry(player: $0, isStarter: false) }
+        return starters + reserves
+    }
+
+    private var filteredPlayers: [PlayerEntry] {
+        switch activeFilter {
+        case .all:
+            return allPlayers
+        case .starters:
+            return allPlayers.filter(\.isStarter)
+        case .bench:
+            return allPlayers.filter { !$0.isStarter }
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                centerBackground
+
+                VStack(spacing: 10) {
+                    centerHeader
+                    statsStrip
+                    filterBar
+                    playersList
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+            }
+            .navigationBarHidden(true)
+            .environment(\.layoutDirection, .rightToLeft)
+            .navigationDestination(item: $selectedPlayerForDetails) { entry in
+                PlayerDetailsPremiumView(
+                    language: language,
+                    entry: entry,
+                    profile: profile(for: entry),
+                    onClose: {
+                        selectedPlayerForDetails = nil
+                    }
+                )
+            }
+            .onAppear {
+                withAnimation(.easeOut(duration: 0.35)) {
+                    listAnimateIn = true
+                }
+            }
+        }
+    }
+
+    private var centerBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: 0x060B1A), Color(hex: 0x0C2448), Color(hex: 0x071A36)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [Color(hex: 0x3EBBFF, alpha: 0.22), Color.clear],
+                center: .top,
+                startRadius: 40,
+                endRadius: 250
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [Color(hex: 0x6F78FF, alpha: 0.16), Color.clear],
+                center: .bottomTrailing,
+                startRadius: 10,
+                endRadius: 220
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private var centerHeader: some View {
+        ZStack {
+            VStack(spacing: 3) {
+                Text(t(ar: "مركز الفريق", en: "Team Center", hi: "टीम सेंटर", zh: "球队中心", ku: "ناوەندی تیم"))
+                    .font(.system(size: 31, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(t(ar: "قائمة اللاعبين", en: "Squad Players", hi: "स्क्वाड खिलाड़ी", zh: "球队球员", ku: "یاریزانانی تیم"))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
+            HStack {
+                Button {
+                    onClose()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .black))
+                        Text(t(ar: "رجوع", en: "Back", hi: "वापस", zh: "返回", ku: "گەڕانەوە"))
+                            .font(.system(size: 13, weight: .black))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.11))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
+
+                Spacer()
+            }
+        }
+    }
+
+    private var statsStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                miniStat(
+                    title: t(ar: "الإجمالي", en: "Total", hi: "कुल", zh: "总数", ku: "کۆی گشتی"),
+                    value: "\(allPlayers.count)",
+                    tint: FootballTheme.accentCyan
+                )
+                miniStat(
+                    title: t(ar: "الهجوم", en: "Attack", hi: "आक्रमण", zh: "进攻", ku: "هێرش"),
+                    value: "\(playersCount(for: .attack))",
+                    tint: FootballTheme.pointsYellow
+                )
+                miniStat(
+                    title: t(ar: "الوسط", en: "Midfield", hi: "मिडफ़ील्ड", zh: "中场", ku: "ناوەڕاست"),
+                    value: "\(playersCount(for: .midfield))",
+                    tint: FootballTheme.accentGreen
+                )
+                miniStat(
+                    title: t(ar: "الدفاع", en: "Defense", hi: "रक्षा", zh: "防守", ku: "بەرگری"),
+                    value: "\(playersCount(for: .defense))",
+                    tint: FootballTheme.accentCyan
+                )
+                miniStat(
+                    title: t(ar: "الحارس", en: "Goalkeeper", hi: "गोलकीपर", zh: "门将", ku: "گۆڵپارێز"),
+                    value: "\(playersCount(for: .goalkeeper))",
+                    tint: FootballTheme.pitchGreen
+                )
+            }
+        }
+    }
+
+    private func miniStat(title: String, value: String, tint: Color) -> some View {
+        VStack(spacing: 3) {
+            Text(value)
+                .font(.system(size: 19, weight: .black, design: .rounded))
+                .foregroundStyle(tint)
+            Text(title)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.74))
+        }
+        .frame(width: 90)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                )
+        )
+    }
+
+    private func playersCount(for unit: SquadUnit) -> Int {
+        allPlayers.filter { roleUnit(for: $0.player.role) == unit }.count
+    }
+
+    private func roleUnit(for role: String) -> SquadUnit {
+        let key = role.uppercased()
+        switch key {
+        case "GK":
+            return .goalkeeper
+        case "RB", "RWB", "CB", "LB", "LWB", "SW":
+            return .defense
+        case "DM", "CM", "AM", "RM", "LM", "MF":
+            return .midfield
+        case "RW", "LW", "ST", "CF", "SS", "FW":
+            return .attack
+        default:
+            return .midfield
+        }
+    }
+
+    private var filterBar: some View {
+        HStack(spacing: 8) {
+            ForEach(SquadFilter.allCases) { filter in
+                Button {
+                    withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                        activeFilter = filter
+                    }
+                } label: {
+                    Text(filterTitle(filter))
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(activeFilter == filter ? .black : .white.opacity(0.86))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 9)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(activeFilter == filter ? FootballTheme.pitchGreen : Color.white.opacity(0.09))
+                        )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
+            }
+        }
+        .padding(9)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(0.25))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                )
+        )
+    }
+
+    private func filterTitle(_ filter: SquadFilter) -> String {
+        switch filter {
+        case .all:
+            return t(ar: "الكل", en: "All", hi: "सभी", zh: "全部", ku: "هەموو")
+        case .starters:
+            return t(ar: "التشكيلة", en: "Lineup", hi: "लाइनअप", zh: "首发阵容", ku: "پێکهاتە")
+        case .bench:
+            return t(ar: "البدلاء", en: "Bench", hi: "बेंच", zh: "替补", ku: "یەدەک")
+        }
+    }
+
+    private var playersList: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 10) {
+                ForEach(Array(filteredPlayers.enumerated()), id: \.element.id) { index, entry in
+                    playerCard(entry)
+                        .opacity(listAnimateIn ? 1 : 0)
+                        .offset(y: listAnimateIn ? 0 : 14)
+                        .animation(
+                            .spring(response: 0.38, dampingFraction: 0.84).delay(Double(index) * 0.02),
+                            value: listAnimateIn
+                        )
+                }
+            }
+            .padding(.top, 2)
+            .padding(.bottom, 12)
+        }
+    }
+
+    private func playerCard(_ entry: PlayerEntry) -> some View {
+        let profileData = profile(for: entry)
+        let selected = highlightedPlayerID == entry.id
+
+        return Button {
+            selectPlayer(entry)
+        } label: {
+            HStack(spacing: 10) {
+                ZStack(alignment: .bottom) {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: entry.isStarter
+                                    ? [Color(hex: 0x2EEA99), Color(hex: 0x0CA36F)]
+                                    : [Color(hex: 0x56AEFF), Color(hex: 0x3874D6)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 58, height: 58)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.42), lineWidth: 1)
+                        )
+                        .shadow(color: (entry.isStarter ? FootballTheme.pitchGreen : FootballTheme.accentCyan).opacity(0.34), radius: 8, x: 0, y: 4)
+
+                    Image(systemName: "person.fill")
+                        .font(.system(size: 24, weight: .black))
+                        .foregroundStyle(Color.white.opacity(0.95))
+                        .offset(y: -4)
+
+                    Text("#\(entry.player.number)")
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(.black.opacity(0.84))
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(Color.white.opacity(0.88)))
+                        .offset(y: 9)
+                }
+
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text(localizedDisplayName(entry.player.name, in: language))
+                        .font(.system(size: 17, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+
+                    HStack(spacing: 6) {
+                        rolePill(entry.player.role)
+                        rolePill(entry.isStarter
+                                 ? t(ar: "أساسي", en: "Starter", hi: "स्टार्टर", zh: "首发", ku: "سەرەکی")
+                                 : t(ar: "بديل", en: "Bench", hi: "बेंच", zh: "替补", ku: "یەدەک"))
+
+                        Spacer(minLength: 0)
+
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(readinessColor(profileData.readiness))
+                                .frame(width: 7, height: 7)
+                            Text("\(profileData.readiness)%")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.78))
+                        }
+                    }
+                }
+
+                VStack(spacing: 3) {
+                    Text("\(profileData.overall)")
+                        .font(.system(size: 21, weight: .black, design: .rounded))
+                        .foregroundStyle(FootballTheme.pointsYellow)
+                    Text(t(ar: "تقييم", en: "OVR", hi: "रेटिंग", zh: "评分", ku: "هەڵسەنگاندن"))
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+                .frame(width: 56)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: selected
+                                ? [Color(hex: 0x1F4F9D), Color(hex: 0x2444A8)]
+                                : [Color.white.opacity(0.11), Color.white.opacity(0.06)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(selected ? Color.white.opacity(0.86) : Color.white.opacity(0.18), lineWidth: selected ? 1.6 : 1)
+            )
+            .shadow(color: selected ? FootballTheme.accentCyan.opacity(0.35) : Color.black.opacity(0.18), radius: selected ? 14 : 6, x: 0, y: selected ? 9 : 4)
+            .scaleEffect(selected ? 0.98 : 1)
+            .matchedGeometryEffect(id: entry.id.uuidString, in: listNamespace, isSource: true)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func rolePill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .black))
+            .foregroundStyle(.white.opacity(0.86))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.24))
+            )
+    }
+
+    private func selectPlayer(_ entry: PlayerEntry) {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+            highlightedPlayerID = entry.id
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            selectedPlayerForDetails = entry
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                highlightedPlayerID = nil
+            }
+        }
+    }
+
+    private func playerRating(for player: TeamPlayer, isStarter: Bool) -> Int {
+        let roleSeed = player.role.unicodeScalars.reduce(0) { partial, scalar in
+            partial + Int(scalar.value)
+        }
+        let base = 67 + ((player.number * 13 + roleSeed) % 22) + (isStarter ? 4 : 0)
+        return min(max(base, 64), 95)
+    }
+
+    private func readinessPercent(for player: TeamPlayer) -> Int {
+        let roleSeed = player.role.unicodeScalars.reduce(0) { partial, scalar in
+            partial + Int(scalar.value)
+        }
+        return 58 + ((player.number * 19 + roleSeed) % 40)
+    }
+
+    private func readinessColor(_ percent: Int) -> Color {
+        if percent >= 84 { return FootballTheme.accentGreen }
+        if percent >= 72 { return FootballTheme.pointsYellow }
+        return FootballTheme.dangerRed
+    }
+
+    private func profile(for entry: PlayerEntry) -> PlayerProfileData {
+        let seed = entry.player.name.unicodeScalars.reduce(entry.player.number * 57) { partial, scalar in
+            partial + Int(scalar.value)
+        }
+        let overall = playerRating(for: entry.player, isStarter: entry.isStarter)
+        let age = 18 + (seed % 17)
+        let heightCM = 168 + (seed % 26)
+        let weightKG = 63 + (seed % 18)
+        let readiness = readinessPercent(for: entry.player)
+        let fitnessStatus: String
+        if readiness >= 88 {
+            fitnessStatus = t(ar: "جاهز بالكامل", en: "Fully fit", hi: "पूरी तरह फिट", zh: "状态极佳", ku: "تەواو ئامادەیە")
+        } else if readiness >= 74 {
+            fitnessStatus = t(ar: "جاهز", en: "Match ready", hi: "मैच फिट", zh: "可出场", ku: "ئامادەی یارییە")
+        } else {
+            fitnessStatus = t(ar: "يحتاج متابعة", en: "Needs monitoring", hi: "निगरानी ज़रूरी", zh: "需观察", ku: "پێویستی بە چاودێری هەیە")
+        }
+
+        let foot = preferredFoot(seed: seed)
+        let nationality = nationalityName(seed: seed)
+        let marketValueM = max(3, (overall * 2) + (entry.isStarter ? 10 : 2) - max(age - 28, 0))
+        let contractYears = 1 + (seed % 5)
+        let birthDateText = formattedBirthDate(seed: seed, age: age)
+        let contractUntil = formattedContractEnd(years: contractYears)
+
+        return PlayerProfileData(
+            overall: overall,
+            age: age,
+            nationality: nationality,
+            heightCM: heightCM,
+            weightKG: weightKG,
+            birthDateText: birthDateText,
+            preferredFoot: foot,
+            readiness: readiness,
+            fitnessStatus: fitnessStatus,
+            marketValueM: marketValueM,
+            contractYears: contractYears,
+            contractUntil: contractUntil
+        )
+    }
+
+    private func preferredFoot(seed: Int) -> String {
+        if seed % 7 == 0 {
+            return t(ar: "كلتا القدمين", en: "Both", hi: "दोनों पैर", zh: "双足", ku: "هەردوو پێ")
+        }
+        if seed % 2 == 0 {
+            return t(ar: "اليمنى", en: "Right", hi: "दायां", zh: "右脚", ku: "ڕاست")
+        }
+        return t(ar: "اليسرى", en: "Left", hi: "बायां", zh: "左脚", ku: "چەپ")
+    }
+
+    private func nationalityName(seed: Int) -> String {
+        switch seed % 12 {
+        case 0: return t(ar: "إسبانيا", en: "Spain", hi: "स्पेन", zh: "西班牙", ku: "ئیسپانیا")
+        case 1: return t(ar: "فرنسا", en: "France", hi: "फ्रांस", zh: "法国", ku: "فەرەنسا")
+        case 2: return t(ar: "البرازيل", en: "Brazil", hi: "ब्राज़ील", zh: "巴西", ku: "برازیل")
+        case 3: return t(ar: "الأرجنتين", en: "Argentina", hi: "अर्जेंटीना", zh: "阿根廷", ku: "ئەرجەنتین")
+        case 4: return t(ar: "إنجلترا", en: "England", hi: "इंग्लैंड", zh: "英格兰", ku: "ئینگلتەرا")
+        case 5: return t(ar: "إيطاليا", en: "Italy", hi: "इटली", zh: "意大利", ku: "ئیتالیا")
+        case 6: return t(ar: "البرتغال", en: "Portugal", hi: "पुर्तगाल", zh: "葡萄牙", ku: "پورتوگال")
+        case 7: return t(ar: "ألمانيا", en: "Germany", hi: "जर्मनी", zh: "德国", ku: "ئەڵمانیا")
+        case 8: return t(ar: "هولندا", en: "Netherlands", hi: "नीदरलैंड", zh: "荷兰", ku: "هۆڵەندا")
+        case 9: return t(ar: "بلجيكا", en: "Belgium", hi: "बेल्जियम", zh: "比利时", ku: "بەلجیکا")
+        case 10: return t(ar: "المغرب", en: "Morocco", hi: "मोरक्को", zh: "摩洛哥", ku: "مەغریب")
+        default: return t(ar: "كرواتيا", en: "Croatia", hi: "क्रोएशिया", zh: "克罗地亚", ku: "کرۆاتیا")
+        }
+    }
+
+    private func formattedBirthDate(seed: Int, age: Int) -> String {
+        let month = (seed % 12) + 1
+        let day = (seed % 27) + 1
+        let year = Calendar.current.component(.year, from: Date()) - age
+        var comp = DateComponents()
+        comp.year = year
+        comp.month = month
+        comp.day = day
+        let date = Calendar.current.date(from: comp) ?? Date()
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language.localeIdentifier)
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+
+    private func formattedContractEnd(years: Int) -> String {
+        let date = Calendar.current.date(byAdding: .year, value: years, to: Date()) ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: language.localeIdentifier)
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+
+    private struct PlayerDetailsPremiumView: View {
+        let language: AppLanguage
+        let entry: PlayerEntry
+        let profile: PlayerProfileData
+        let onClose: () -> Void
+
+        private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+            language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+        }
+
+        var body: some View {
+            ZStack {
+                detailBackground
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        detailHeader
+                        heroCard
+                        infoSections
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                    .padding(.bottom, 14)
+                }
+            }
+            .navigationBarBackButtonHidden(true)
+            .environment(\.layoutDirection, .rightToLeft)
+        }
+
+        private var detailBackground: some View {
+            ZStack {
+                LinearGradient(
+                    colors: [Color(hex: 0x050916), Color(hex: 0x111E45), Color(hex: 0x0A1531)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                RadialGradient(
+                    colors: [Color(hex: 0x4BC9FF, alpha: 0.20), Color.clear],
+                    center: .top,
+                    startRadius: 20,
+                    endRadius: 240
+                )
+                .ignoresSafeArea()
+            }
+        }
+
+        private var detailHeader: some View {
+            HStack {
+                Button {
+                    onClose()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .black))
+                        Text(t(ar: "اللاعبون", en: "Players", hi: "खिलाड़ी", zh: "球员", ku: "یاریزانان"))
+                            .font(.system(size: 13, weight: .black))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.10))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
+
+                Spacer()
+
+                Text(t(ar: "تفاصيل اللاعب", en: "Player Details", hi: "खिलाड़ी विवरण", zh: "球员详情", ku: "وردەکاری یاریزان"))
+                    .font(.system(size: 17, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+        }
+
+        private var heroCard: some View {
+            VStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: 0x2A4CA8), Color(hex: 0x2D77D7), Color(hex: 0x1E2E88)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.30), Color.clear],
+                        center: .topLeading,
+                        startRadius: 4,
+                        endRadius: 150
+                    )
+
+                    VStack(spacing: 8) {
+                        ZStack(alignment: .bottom) {
+                            Circle()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color.white.opacity(0.92), Color.white.opacity(0.64)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 118, height: 118)
+                                .overlay(
+                                    Circle()
+                                        .stroke(Color.white.opacity(0.44), lineWidth: 1.1)
+                                )
+
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 54, weight: .black))
+                                .foregroundStyle(Color(hex: 0x1A53A5))
+                                .offset(y: -8)
+
+                            Text("#\(entry.player.number)")
+                                .font(.system(size: 12, weight: .black))
+                                .foregroundStyle(.black.opacity(0.82))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule()
+                                        .fill(Color.white.opacity(0.93))
+                                )
+                                .offset(y: 11)
+                        }
+
+                        Text(localizedDisplayName(entry.player.name, in: language))
+                            .font(.system(size: 27, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+
+                        HStack(spacing: 8) {
+                            heroPill(entry.player.role)
+                            heroPill("\(t(ar: "تقييم", en: "OVR", hi: "रेटिंग", zh: "评分", ku: "هەڵسەنگاندن")) \(profile.overall)")
+                            heroPill(profile.fitnessStatus)
+                        }
+
+                        readinessProgress
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 16)
+                }
+                .frame(height: 330)
+                .shadow(color: FootballTheme.accentCyan.opacity(0.25), radius: 18, x: 0, y: 10)
+            }
+        }
+
+        private var readinessProgress: some View {
+            VStack(spacing: 5) {
+                HStack {
+                    Text("\(t(ar: "الجاهزية", en: "Readiness", hi: "तैयारी", zh: "状态", ku: "ئامادەیی")) \(profile.readiness)%")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(.white.opacity(0.90))
+                    Spacer(minLength: 0)
+                }
+
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.18))
+                        Capsule()
+                            .fill(readinessColor(profile.readiness))
+                            .frame(width: geo.size.width * CGFloat(profile.readiness) / 100)
+                    }
+                }
+                .frame(height: 8)
+            }
+            .padding(.top, 2)
+        }
+
+        private func heroPill(_ text: String) -> some View {
+            Text(text)
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(Color.black.opacity(0.24))
+                )
+        }
+
+        private var infoSections: some View {
+            VStack(spacing: 10) {
+                infoSection(
+                    title: t(ar: "المعلومات الشخصية", en: "Personal Info", hi: "व्यक्तिगत जानकारी", zh: "个人信息", ku: "زانیاری کەسی"),
+                    icon: "person.crop.circle.fill",
+                    items: [
+                        InfoTile(title: t(ar: "العمر", en: "Age", hi: "उम्र", zh: "年龄", ku: "تەمەن"), value: "\(profile.age)", tint: FootballTheme.accentCyan),
+                        InfoTile(title: t(ar: "الجنسية", en: "Nationality", hi: "राष्ट्रीयता", zh: "国籍", ku: "نەتەوە"), value: profile.nationality, tint: FootballTheme.pointsYellow),
+                        InfoTile(title: t(ar: "الطول", en: "Height", hi: "कद", zh: "身高", ku: "درێژی"), value: "\(profile.heightCM) cm", tint: FootballTheme.accentGreen),
+                        InfoTile(title: t(ar: "الوزن", en: "Weight", hi: "वजन", zh: "体重", ku: "کێش"), value: "\(profile.weightKG) kg", tint: FootballTheme.pointsYellow),
+                        InfoTile(title: t(ar: "تاريخ الميلاد", en: "Birth Date", hi: "जन्म तिथि", zh: "生日", ku: "بەرواری لەدایکبوون"), value: profile.birthDateText, tint: FootballTheme.accentCyan)
+                    ]
+                )
+
+                infoSection(
+                    title: t(ar: "المعلومات الفنية", en: "Technical Info", hi: "तकनीकी जानकारी", zh: "技术信息", ku: "زانیاری تەکنیکی"),
+                    icon: "sportscourt.fill",
+                    items: [
+                        InfoTile(title: t(ar: "المركز", en: "Position", hi: "पोज़िशन", zh: "位置", ku: "پۆست"), value: entry.player.role, tint: FootballTheme.accentGreen),
+                        InfoTile(title: t(ar: "التقييم العام", en: "Overall", hi: "ओवरऑल", zh: "总评", ku: "هەڵسەنگاندنی گشتی"), value: "\(profile.overall)", tint: FootballTheme.pointsYellow),
+                        InfoTile(title: t(ar: "القدم المفضلة", en: "Preferred Foot", hi: "पसंदीदा पैर", zh: "惯用脚", ku: "پێی دڵخواز"), value: profile.preferredFoot, tint: FootballTheme.accentCyan),
+                        InfoTile(title: t(ar: "رقم القميص", en: "Shirt Number", hi: "जर्सी नंबर", zh: "球衣号码", ku: "ژمارەی جل"), value: "#\(entry.player.number)", tint: FootballTheme.pointsYellow)
+                    ]
+                )
+
+                infoSection(
+                    title: t(ar: "الحالة البدنية", en: "Physical Status", hi: "शारीरिक स्थिति", zh: "身体状态", ku: "دۆخی جەستەیی"),
+                    icon: "heart.circle.fill",
+                    items: [
+                        InfoTile(title: t(ar: "الجاهزية", en: "Readiness", hi: "तैयारी", zh: "状态", ku: "ئامادەیی"), value: "\(profile.readiness)%", tint: readinessColor(profile.readiness)),
+                        InfoTile(title: t(ar: "الحالة", en: "Condition", hi: "स्थिति", zh: "状态", ku: "دۆخ"), value: profile.fitnessStatus, tint: FootballTheme.accentGreen)
+                    ]
+                )
+
+                infoSection(
+                    title: t(ar: "العقد / القيمة", en: "Contract / Value", hi: "अनुबंध / कीमत", zh: "合同 / 价值", ku: "گرێبەست / نرخ"),
+                    icon: "briefcase.fill",
+                    items: [
+                        InfoTile(title: t(ar: "القيمة السوقية", en: "Market Value", hi: "मार्केट वैल्यू", zh: "市场价值", ku: "نرخی بازاڕ"), value: "$\(profile.marketValueM)M", tint: FootballTheme.pointsYellow),
+                        InfoTile(title: t(ar: "مدة العقد", en: "Contract", hi: "अनुबंध अवधि", zh: "合同期限", ku: "ماوەی گرێبەست"), value: "\(profile.contractYears) \(t(ar: "سنوات", en: "years", hi: "साल", zh: "年", ku: "ساڵ"))", tint: FootballTheme.accentCyan),
+                        InfoTile(title: t(ar: "ينتهي في", en: "Ends On", hi: "समाप्ति", zh: "到期日", ku: "کۆتایی لە"), value: profile.contractUntil, tint: FootballTheme.accentGreen)
+                    ]
+                )
+            }
+        }
+
+        private func infoSection(title: String, icon: String, items: [InfoTile]) -> some View {
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(spacing: 7) {
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(FootballTheme.accentCyan)
+                    Text(title)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(items) { item in
+                        infoTile(item)
+                    }
+                }
+            }
+            .padding(11)
+            .background(
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                            .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.18), radius: 8, x: 0, y: 5)
+        }
+
+        private func infoTile(_ item: InfoTile) -> some View {
+            VStack(alignment: .trailing, spacing: 4) {
+                Text(item.title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.68))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                Text(item.value)
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(item.tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.78)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.black.opacity(0.20))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                    )
+            )
+        }
+
+        private func readinessColor(_ percent: Int) -> Color {
+            if percent >= 84 { return FootballTheme.accentGreen }
+            if percent >= 72 { return FootballTheme.pointsYellow }
+            return FootballTheme.dangerRed
+        }
+    }
+}
+
+private struct TransferCenterPremiumView: View {
+    private enum PositionFilter: CaseIterable, Identifiable {
+        case all
+        case goalkeeper
+        case defense
+        case midfield
+        case attack
+
+        var id: String {
+            switch self {
+            case .all: return "all"
+            case .goalkeeper: return "gk"
+            case .defense: return "def"
+            case .midfield: return "mid"
+            case .attack: return "att"
+            }
+        }
+    }
+
+    private struct MarketPlayer: Identifiable, Hashable {
+        let id: UUID
+        var name: String
+        var age: Int
+        var position: String
+        var overall: Int
+        var club: String
+        var league: String
+        var nationality: String
+        var marketValueM: Int
+        var salaryK: Int
+        var contractYears: Int
+        var preferredFoot: String
+        var heightCM: Int
+        var potential: Int
+        var birthDate: Date
+        var isFeatured: Bool
+    }
+
+    private struct DetailRow: Identifiable {
+        let id = UUID()
+        let title: String
+        let value: String
+        let tint: Color
+    }
+
+    private let positionPattern = [
+        "GK", "GK",
+        "RB", "CB", "CB", "LB",
+        "DM", "CM", "CM", "AM",
+        "RW", "LW", "ST", "ST",
+        "RM", "LM",
+        "CB", "RB", "LB", "CM",
+        "RW", "ST", "AM", "GK"
+    ]
+
+    let language: AppLanguage
+    let selectedTeam: String?
+    @Binding var budgetM: Int
+    @Binding var lineup: [TeamPlayer]
+    @Binding var bench: [TeamPlayer]
+    let onClose: () -> Void
+
+    @State private var marketPlayers: [MarketPlayer] = []
+    @State private var searchText = ""
+    @State private var selectedLeagueName = topLeagues.first?.name ?? ""
+    @State private var selectedClubName = topLeagues.first?.teams.first ?? ""
+    @State private var positionFilter: PositionFilter = .all
+    @State private var leagueFilterName: String?
+    @State private var maxAgeFilter = 40.0
+    @State private var minRatingFilter = 60.0
+    @State private var maxPriceFilter = 220.0
+    @State private var shortlistIDs: Set<UUID> = []
+    @State private var followIDs: Set<UUID> = []
+    @State private var selectedPlayerForDetails: MarketPlayer?
+    @State private var negotiationPlayer: MarketPlayer?
+    @State private var highlightedID: UUID?
+    @State private var toastMessage = ""
+    @State private var showToast = false
+    @State private var animateIn = false
+
+    @Namespace private var cardNamespace
+
+    private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+        language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+    }
+
+    private var appLocale: Locale {
+        Locale(identifier: language.localeIdentifier)
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var selectedLeague: League? {
+        topLeagues.first(where: { $0.name == selectedLeagueName })
+    }
+
+    private var teamsForSelectedLeague: [String] {
+        selectedLeague?.teams ?? []
+    }
+
+    private var shortlistedPlayers: [MarketPlayer] {
+        marketPlayers.filter { shortlistIDs.contains($0.id) }
+            .sorted { $0.overall > $1.overall }
+    }
+
+    private var visiblePlayers: [MarketPlayer] {
+        let source: [MarketPlayer]
+        if !trimmedSearchText.isEmpty {
+            source = marketPlayers.filter { matchesSearch($0, query: trimmedSearchText) }
+        } else if !selectedClubName.isEmpty {
+            source = marketPlayers.filter { $0.club == selectedClubName }
+        } else {
+            source = marketPlayers
+        }
+
+        let filteredByLeague = source.filter { player in
+            guard let leagueFilterName else { return true }
+            return player.league == leagueFilterName
+        }
+
+        let filteredByPosition = filteredByLeague.filter { player in
+            switch positionFilter {
+            case .all:
+                return true
+            case .goalkeeper:
+                return player.position == "GK"
+            case .defense:
+                return ["RB", "CB", "LB", "RWB", "LWB", "SW"].contains(player.position)
+            case .midfield:
+                return ["DM", "CM", "AM", "RM", "LM", "MF"].contains(player.position)
+            case .attack:
+                return ["RW", "LW", "ST", "CF", "SS", "FW"].contains(player.position)
+            }
+        }
+
+        let filteredByAge = filteredByPosition.filter { Double($0.age) <= maxAgeFilter }
+        let filteredByRating = filteredByAge.filter { Double($0.overall) >= minRatingFilter }
+        let filteredByPrice = filteredByRating.filter { Double($0.marketValueM) <= maxPriceFilter }
+
+        if trimmedSearchText.isEmpty {
+            return filteredByPrice.sorted { $0.overall > $1.overall }
+        }
+
+        let normalizedQuery = normalize(trimmedSearchText)
+        return filteredByPrice.sorted { lhs, rhs in
+            searchScore(for: lhs, query: normalizedQuery) > searchScore(for: rhs, query: normalizedQuery)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                transferBackground
+
+                VStack(spacing: 10) {
+                    headerBar
+                    searchBar
+                    filtersPanel
+                    leagueAndTeamSelection
+
+                    if !shortlistedPlayers.isEmpty {
+                        shortlistStrip
+                    }
+
+                    resultsHeader
+                    playersList
+
+                    if showToast {
+                        toastPill
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
+            }
+            .navigationBarHidden(true)
+            .environment(\.layoutDirection, .rightToLeft)
+            .navigationDestination(item: $selectedPlayerForDetails) { player in
+                TransferPlayerDetailsView(
+                    language: language,
+                    player: player,
+                    isShortlisted: shortlistIDs.contains(player.id),
+                    onBack: {
+                        selectedPlayerForDetails = nil
+                    },
+                    onNegotiate: {
+                        negotiationPlayer = player
+                    },
+                    onToggleShortlist: {
+                        toggleShortlist(player)
+                    }
+                )
+            }
+            .sheet(item: $negotiationPlayer) { player in
+                TransferNegotiationSheetView(
+                    language: language,
+                    player: player,
+                    budgetM: budgetM,
+                    onSubmit: { offerM, salaryK, years, bonusM in
+                        submitNegotiation(
+                            player: player,
+                            offerM: offerM,
+                            salaryK: salaryK,
+                            years: years,
+                            bonusM: bonusM
+                        )
+                        negotiationPlayer = nil
+                    },
+                    onCancel: {
+                        negotiationPlayer = nil
+                    }
+                )
+            }
+            .onAppear {
+                if marketPlayers.isEmpty {
+                    marketPlayers = buildInitialDatabase()
+                }
+                withAnimation(.easeOut(duration: 0.35)) {
+                    animateIn = true
+                }
+            }
+            .onChange(of: selectedLeagueName) { _, newValue in
+                if let league = topLeagues.first(where: { $0.name == newValue }) {
+                    selectedClubName = league.teams.first ?? ""
+                }
+            }
+        }
+    }
+
+    private var transferBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: 0x050918), Color(hex: 0x0D2041), Color(hex: 0x081A35)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [Color(hex: 0x47C4FF, alpha: 0.22), Color.clear],
+                center: .top,
+                startRadius: 14,
+                endRadius: 250
+            )
+            .ignoresSafeArea()
+
+            RadialGradient(
+                colors: [Color(hex: 0xAB78FF, alpha: 0.16), Color.clear],
+                center: .bottomTrailing,
+                startRadius: 14,
+                endRadius: 230
+            )
+            .ignoresSafeArea()
+        }
+    }
+
+    private var headerBar: some View {
+        ZStack {
+            VStack(spacing: 3) {
+                Text("مركز الانتقالات")
+                    .font(.system(size: 30, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                Text(t(ar: "سوق انتقالات حي", en: "Live Transfer Market", hi: "लाइव ट्रांसफ़र मार्केट", zh: "实时转会市场", ku: "بازاڕی گواستنەوەی زیندوو"))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.72))
+            }
+
+            HStack {
+                Button {
+                    onClose()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .black))
+                        Text(t(ar: "رجوع", en: "Back", hi: "वापस", zh: "返回", ku: "گەڕانەوە"))
+                            .font(.system(size: 13, weight: .black))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.11))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
+
+                Spacer()
+
+                budgetPill
+            }
+        }
+    }
+
+    private var budgetPill: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "dollarsign.circle.fill")
+                .font(.system(size: 13, weight: .black))
+            Text("$\(budgetM)M")
+                .font(.system(size: 13, weight: .black))
+        }
+        .foregroundStyle(FootballTheme.pointsYellow)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(
+            Capsule()
+                .fill(Color.black.opacity(0.24))
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                )
+        )
+    }
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15, weight: .black))
+                .foregroundStyle(FootballTheme.accentCyan)
+
+            TextField(
+                t(
+                    ar: "ابحث عن أي لاعب بالاسم...",
+                    en: "Search any player by name...",
+                    hi: "किसी खिलाड़ी को नाम से खोजें...",
+                    zh: "按姓名搜索球员...",
+                    ku: "بە ناو گەڕان بۆ هەر یاریزانێک..."
+                ),
+                text: $searchText
+            )
+            .font(.system(size: 15, weight: .bold))
+            .foregroundStyle(.white)
+            .textInputAutocapitalization(.never)
+            .disableAutocorrection(true)
+
+            if !searchText.isEmpty {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        searchText = ""
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(.white.opacity(0.65))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 15, style: .continuous)
+                .fill(Color.white.opacity(0.10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        .stroke(Color.white.opacity(0.15), lineWidth: 1)
+                )
+        )
+        .shadow(color: FootballTheme.accentCyan.opacity(0.13), radius: 9, x: 0, y: 5)
+    }
+
+    private var filtersPanel: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            HStack {
+                Text(t(ar: "الفلاتر", en: "Filters", hi: "फ़िल्टर", zh: "筛选", ku: "فلتەر"))
+                    .font(.system(size: 14, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    filterChip(
+                        title: t(ar: "الكل", en: "All", hi: "सभी", zh: "全部", ku: "هەموو"),
+                        active: positionFilter == .all
+                    ) { positionFilter = .all }
+                    filterChip(
+                        title: t(ar: "الحارس", en: "GK", hi: "गोलकीपर", zh: "门将", ku: "گۆڵپارێز"),
+                        active: positionFilter == .goalkeeper
+                    ) { positionFilter = .goalkeeper }
+                    filterChip(
+                        title: t(ar: "الدفاع", en: "DEF", hi: "डिफेंस", zh: "后卫", ku: "بەرگری"),
+                        active: positionFilter == .defense
+                    ) { positionFilter = .defense }
+                    filterChip(
+                        title: t(ar: "الوسط", en: "MID", hi: "मिडफ़ील्ड", zh: "中场", ku: "ناوەڕاست"),
+                        active: positionFilter == .midfield
+                    ) { positionFilter = .midfield }
+                    filterChip(
+                        title: t(ar: "الهجوم", en: "ATT", hi: "अटैक", zh: "前锋", ku: "هێرش"),
+                        active: positionFilter == .attack
+                    ) { positionFilter = .attack }
+                }
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    filterChip(
+                        title: t(ar: "كل الدوريات", en: "All Leagues", hi: "सभी लीग", zh: "所有联赛", ku: "هەموو لیگەکان"),
+                        active: leagueFilterName == nil
+                    ) { leagueFilterName = nil }
+
+                    ForEach(topLeagues, id: \.name) { league in
+                        filterChip(
+                            title: localizedLeagueName(league.name, in: language),
+                            active: leagueFilterName == league.name
+                        ) {
+                            leagueFilterName = league.name
+                        }
+                    }
+                }
+            }
+
+            sliderRow(
+                title: t(ar: "العمر حتى", en: "Age Up To", hi: "अधिकतम उम्र", zh: "年龄上限", ku: "تەمەنی زۆرترین"),
+                valueText: "\(Int(maxAgeFilter))",
+                value: $maxAgeFilter,
+                range: 18...40
+            )
+            sliderRow(
+                title: t(ar: "أدنى تقييم", en: "Min Rating", hi: "न्यूनतम रेटिंग", zh: "最低评分", ku: "کەمترین هەڵسەنگاندن"),
+                valueText: "\(Int(minRatingFilter))",
+                value: $minRatingFilter,
+                range: 55...92
+            )
+            sliderRow(
+                title: t(ar: "السعر حتى", en: "Price Up To", hi: "अधिकतम कीमत", zh: "价格上限", ku: "نرخ تا"),
+                valueText: "$\(Int(maxPriceFilter))M",
+                value: $maxPriceFilter,
+                range: 5...260
+            )
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                )
+        )
+    }
+
+    private func filterChip(title: String, active: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(active ? .black : .white.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(active ? FootballTheme.pitchGreen : Color.white.opacity(0.10))
+                )
+        }
+        .buttonStyle(InteractivePressButtonStyle())
+    }
+
+    private func sliderRow(title: String, valueText: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        VStack(spacing: 4) {
+            HStack {
+                Text(valueText)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(FootballTheme.pointsYellow)
+                Spacer()
+                Text(title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.76))
+            }
+            Slider(value: value, in: range, step: 1)
+                .tint(FootballTheme.accentCyan)
+        }
+    }
+
+    private var leagueAndTeamSelection: some View {
+        VStack(alignment: .trailing, spacing: 8) {
+            HStack {
+                Text(t(ar: "اختر الدوري", en: "Choose League", hi: "लीग चुनें", zh: "选择联赛", ku: "لیگ هەڵبژێرە"))
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(topLeagues, id: \.name) { league in
+                        filterChip(
+                            title: localizedLeagueName(league.name, in: language),
+                            active: selectedLeagueName == league.name
+                        ) {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                                selectedLeagueName = league.name
+                            }
+                        }
+                    }
+                }
+            }
+
+            HStack {
+                Text(t(ar: "اختر الفريق", en: "Choose Team", hi: "टीम चुनें", zh: "选择球队", ku: "تیم هەڵبژێرە"))
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white)
+                Spacer()
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 7) {
+                    ForEach(teamsForSelectedLeague, id: \.self) { team in
+                        filterChip(
+                            title: localizedDisplayName(team, in: language),
+                            active: selectedClubName == team
+                        ) {
+                            withAnimation(.spring(response: 0.30, dampingFraction: 0.82)) {
+                                selectedClubName = team
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var shortlistStrip: some View {
+        VStack(alignment: .trailing, spacing: 7) {
+            HStack {
+                Text(t(ar: "القائمة المختصرة", en: "Shortlist", hi: "शॉर्टलिस्ट", zh: "候选名单", ku: "لیستی کورت"))
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(.white)
+                Spacer()
+                Text("\(shortlistedPlayers.count)")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(FootballTheme.pointsYellow)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(shortlistedPlayers.prefix(20)) { player in
+                        Button {
+                            openPlayerDetails(player)
+                        } label: {
+                            VStack(alignment: .trailing, spacing: 3) {
+                                Text(localizedDisplayName(player.name, in: language))
+                                    .font(.system(size: 12, weight: .black))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                Text("\(player.position) • \(player.overall)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white.opacity(0.72))
+                                Text("$\(player.marketValueM)M")
+                                    .font(.system(size: 10, weight: .black))
+                                    .foregroundStyle(FootballTheme.pointsYellow)
+                            }
+                            .frame(width: 150, alignment: .trailing)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.white.opacity(0.10))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                            .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                                    )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.black.opacity(0.20))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                )
+        )
+    }
+
+    private var resultsHeader: some View {
+        HStack {
+            Text("\(visiblePlayers.count) \(t(ar: "لاعب", en: "players", hi: "खिलाड़ी", zh: "名球员", ku: "یاریزان"))")
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(.white.opacity(0.74))
+            Spacer()
+            Text(trimmedSearchText.isEmpty
+                 ? t(ar: "لاعبو الفريق المختار", en: "Selected Team Players", hi: "चुनी टीम के खिलाड़ी", zh: "所选球队球员", ku: "یاریزانانی تیمی هەڵبژێردراو")
+                 : t(ar: "نتائج البحث المباشرة", en: "Live Search Results", hi: "लाइव सर्च परिणाम", zh: "实时搜索结果", ku: "ئەنجامەکانی گەڕانی ڕاستەوخۆ"))
+                .font(.system(size: 14, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+        }
+    }
+
+    private var playersList: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            LazyVStack(spacing: 10) {
+                ForEach(Array(visiblePlayers.enumerated()), id: \.element.id) { index, player in
+                    playerCard(player)
+                        .opacity(animateIn ? 1 : 0)
+                        .offset(y: animateIn ? 0 : 12)
+                        .animation(
+                            .spring(response: 0.36, dampingFraction: 0.84).delay(Double(index) * 0.015),
+                            value: animateIn
+                        )
+                }
+            }
+            .padding(.bottom, 12)
+        }
+    }
+
+    private func playerCard(_ player: MarketPlayer) -> some View {
+        let isHighlighted = highlightedID == player.id
+
+        return VStack(spacing: 8) {
+            Button {
+                openPlayerDetails(player)
+            } label: {
+                HStack(spacing: 10) {
+                    ZStack(alignment: .bottom) {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: player.isFeatured
+                                        ? [Color(hex: 0xFFD35A), Color(hex: 0xFF9152)]
+                                        : [Color(hex: 0x33D39A), Color(hex: 0x1A8F7D)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 56, height: 56)
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.40), lineWidth: 1)
+                            )
+
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 22, weight: .black))
+                            .foregroundStyle(.white.opacity(0.95))
+                            .offset(y: -3)
+                    }
+                    .frame(width: 58)
+
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Text(localizedDisplayName(player.name, in: language))
+                            .font(.system(size: 18, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+
+                        HStack(spacing: 7) {
+                            metaPill(player.position)
+                            metaPill("\(player.age)")
+                            metaPill(localizedDisplayName(player.nationality, in: language))
+                            Spacer(minLength: 0)
+                        }
+
+                        HStack(spacing: 8) {
+                            Text(localizedDisplayName(player.club, in: language))
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.78))
+                                .lineLimit(1)
+
+                            Spacer(minLength: 0)
+
+                            Text("$\(player.marketValueM)M")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundStyle(FootballTheme.pointsYellow)
+                        }
+                    }
+
+                    VStack(spacing: 2) {
+                        Text("\(player.overall)")
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .foregroundStyle(FootballTheme.pointsYellow)
+                        Text(t(ar: "تقييم", en: "OVR", hi: "रेटिंग", zh: "评分", ku: "هەڵسەنگاندن"))
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.64))
+                    }
+                    .frame(width: 52)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+            }
+            .buttonStyle(.plain)
+
+            HStack(spacing: 6) {
+                actionButton(title: t(ar: "تفاوض", en: "Negotiate", hi: "बातचीत", zh: "谈判", ku: "دانوستان"), tint: FootballTheme.pitchGreen) {
+                    negotiationPlayer = player
+                }
+                actionButton(title: t(ar: "عرض", en: "View", hi: "देखें", zh: "查看", ku: "بینین"), tint: FootballTheme.accentCyan) {
+                    openPlayerDetails(player)
+                }
+                actionButton(
+                    title: followIDs.contains(player.id)
+                        ? t(ar: "متابَع", en: "Following", hi: "फॉलो", zh: "已关注", ku: "شوێنکەوت")
+                        : t(ar: "متابعة", en: "Track", hi: "ट्रैक", zh: "关注", ku: "چاودێری"),
+                    tint: FootballTheme.pointsYellow
+                ) {
+                    toggleFollow(player)
+                }
+                actionButton(
+                    title: shortlistIDs.contains(player.id)
+                        ? t(ar: "بالمختصرة", en: "Shortlisted", hi: "शॉर्टलिस्टेड", zh: "已入围", ku: "لە لیستی کورت")
+                        : t(ar: "إضافة للمختصرة", en: "Shortlist", hi: "शॉर्टलिस्ट", zh: "加入候选", ku: "زیادکردن بۆ لیستی کورت"),
+                    tint: Color(hex: 0xD67BFF)
+                ) {
+                    toggleShortlist(player)
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: isHighlighted
+                            ? [Color(hex: 0x1D4E9A), Color(hex: 0x1A377B)]
+                            : [Color.white.opacity(0.11), Color.white.opacity(0.06)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .stroke(isHighlighted ? Color.white.opacity(0.88) : Color.white.opacity(0.18), lineWidth: isHighlighted ? 1.5 : 1)
+        )
+        .shadow(color: isHighlighted ? FootballTheme.accentCyan.opacity(0.34) : Color.black.opacity(0.17), radius: isHighlighted ? 12 : 6, x: 0, y: isHighlighted ? 9 : 4)
+        .scaleEffect(isHighlighted ? 0.985 : 1)
+        .matchedGeometryEffect(id: player.id.uuidString, in: cardNamespace, isSource: true)
+    }
+
+    private func metaPill(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .black))
+            .foregroundStyle(.white.opacity(0.84))
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.22))
+            )
+    }
+
+    private func actionButton(title: String, tint: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(tint.opacity(0.24))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .stroke(tint.opacity(0.70), lineWidth: 1)
+                        )
+                )
+        }
+        .buttonStyle(InteractivePressButtonStyle())
+    }
+
+    private var toastPill: some View {
+        Text(toastMessage)
+            .font(.system(size: 12, weight: .black))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(Color.black.opacity(0.38))
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+            )
+    }
+
+    private func openPlayerDetails(_ player: MarketPlayer) {
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.82)) {
+            highlightedID = player.id
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            selectedPlayerForDetails = player
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.36) {
+            withAnimation(.easeOut(duration: 0.2)) {
+                highlightedID = nil
+            }
+        }
+    }
+
+    private func toggleFollow(_ player: MarketPlayer) {
+        if followIDs.contains(player.id) {
+            followIDs.remove(player.id)
+            presentToast(
+                t(ar: "تم إلغاء متابعة اللاعب", en: "Player removed from tracking", hi: "खिलाड़ी ट्रैकिंग से हटाया गया", zh: "已取消关注球员", ku: "شوێنکەوتنی یاریزان هەڵوەشێنرایەوە")
+            )
+        } else {
+            followIDs.insert(player.id)
+            presentToast(
+                t(ar: "تمت متابعة اللاعب", en: "Player added to tracking", hi: "खिलाड़ी ट्रैकिंग में जोड़ा गया", zh: "已关注该球员", ku: "یاریزانەکە شوێنکەوت کرا")
+            )
+        }
+    }
+
+    private func toggleShortlist(_ player: MarketPlayer) {
+        if shortlistIDs.contains(player.id) {
+            shortlistIDs.remove(player.id)
+            presentToast(
+                t(ar: "تمت إزالة اللاعب من المختصرة", en: "Removed from shortlist", hi: "शॉर्टलिस्ट से हटाया गया", zh: "已移出候选名单", ku: "لە لیستی کورت لابرا")
+            )
+        } else {
+            shortlistIDs.insert(player.id)
+            presentToast(
+                t(ar: "تمت إضافة اللاعب للمختصرة", en: "Added to shortlist", hi: "शॉर्टलिस्ट में जोड़ा गया", zh: "已加入候选名单", ku: "زیادکرا بۆ لیستی کورت")
+            )
+        }
+    }
+
+    private func submitNegotiation(player: MarketPlayer, offerM: Int, salaryK: Int, years: Int, bonusM: Int) {
+        let totalCost = offerM + bonusM
+        guard totalCost <= budgetM else {
+            presentToast(
+                t(ar: "الميزانية لا تكفي لإرسال العرض", en: "Budget is not enough for this offer", hi: "इस ऑफर के लिए बजट पर्याप्त नहीं", zh: "预算不足，无法提交报价", ku: "بودجە بۆ ئەم پێشنیارە بەس نییە")
+            )
+            return
+        }
+
+        guard let index = marketPlayers.firstIndex(where: { $0.id == player.id }) else { return }
+
+        budgetM -= totalCost
+
+        let destinationClub = selectedTeam ?? t(ar: "فريقي", en: "My Club", hi: "मेरी टीम", zh: "我的球队", ku: "تیمی من")
+        let destinationLeague = leagueName(for: destinationClub) ?? marketPlayers[index].league
+
+        marketPlayers[index].club = destinationClub
+        marketPlayers[index].league = destinationLeague
+        marketPlayers[index].salaryK = salaryK
+        marketPlayers[index].contractYears = years
+        marketPlayers[index].marketValueM = max(marketPlayers[index].marketValueM, offerM)
+
+        addSignedPlayerToMyTeam(marketPlayers[index])
+
+        presentToast(
+            t(ar: "تم التعاقد بنجاح مع \(marketPlayers[index].name)", en: "Successfully signed \(marketPlayers[index].name)", hi: "\(marketPlayers[index].name) के साथ सफलतापूर्वक अनुबंध", zh: "已成功签下\(marketPlayers[index].name)", ku: "بە سەرکەوتوویی واژۆ لەگەڵ \(marketPlayers[index].name)")
+        )
+    }
+
+    private func addSignedPlayerToMyTeam(_ player: MarketPlayer) {
+        if lineup.contains(where: { $0.name == player.name }) || bench.contains(where: { $0.name == player.name }) {
+            return
+        }
+
+        let number = nextAvailableShirtNumber()
+        let signed = TeamPlayer(name: player.name, role: player.position, number: number)
+
+        if bench.count < 12 {
+            bench.append(signed)
+        } else if !bench.isEmpty {
+            bench[bench.count - 1] = signed
+        } else if lineup.count < 11 {
+            lineup.append(signed)
+        }
+    }
+
+    private func nextAvailableShirtNumber() -> Int {
+        let used = Set((lineup + bench).map(\.number))
+        for number in 1...99 where !used.contains(number) {
+            return number
+        }
+        return Int.random(in: 1...99)
+    }
+
+    private func leagueName(for teamName: String) -> String? {
+        topLeagues.first(where: { $0.teams.contains(teamName) })?.name
+    }
+
+    private func presentToast(_ message: String) {
+        toastMessage = message
+        withAnimation(.easeInOut(duration: 0.2)) {
+            showToast = true
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showToast = false
+            }
+        }
+    }
+
+    private func normalize(_ text: String) -> String {
+        text
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: appLocale)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func matchesSearch(_ player: MarketPlayer, query: String) -> Bool {
+        let q = normalize(query)
+        guard !q.isEmpty else { return true }
+        let fullName = normalize(player.name)
+        let clubName = normalize(player.club)
+        let nationality = normalize(player.nationality)
+        return fullName.contains(q) || clubName.contains(q) || nationality.contains(q)
+    }
+
+    private func searchScore(for player: MarketPlayer, query: String) -> Int {
+        let name = normalize(player.name)
+        let club = normalize(player.club)
+        var score = player.overall
+
+        if name == query { score += 300 }
+        if name.hasPrefix(query) { score += 120 }
+        if name.contains(query) { score += 70 }
+        if club.contains(query) { score += 40 }
+        if player.isFeatured { score += 24 }
+        return score
+    }
+
+    private func buildInitialDatabase() -> [MarketPlayer] {
+        let firstNames = [
+            "آدم", "إياد", "سامي", "كريم", "يوسف", "نادر", "لؤي", "مالك", "خالد", "رامي",
+            "ناصر", "وليد", "مروان", "فارس", "زياد", "حاتم", "عمر", "تيم", "سيف", "مازن",
+            "هيثم", "علي", "محمود", "ياسر", "تميم", "معتز", "صالح", "باسل", "هاني", "نوح"
+        ]
+        let lastNames = [
+            "الحربي", "الزهراني", "العمري", "السعيد", "الشمري", "المالكي", "الأنصاري", "الدوسري", "الزعبي", "الخطيب",
+            "المنصوري", "القحطاني", "الغامدي", "الحسيني", "العبيدي", "الرفاعي", "النجار", "الجعفري", "البكري", "اليوسفي",
+            "بن سالم", "الحداد", "الكعبي", "السامرائي", "النعيمي", "الطائي", "العتيبي", "المطيري", "الجبوري", "الخالدي"
+        ]
+        let nationalities = [
+            "إسبانيا", "فرنسا", "الأرجنتين", "البرازيل", "البرتغال", "إنجلترا", "إيطاليا", "ألمانيا",
+            "بلجيكا", "هولندا", "كرواتيا", "المغرب", "الجزائر", "مصر", "تونس", "السنغال", "النرويج", "أوروجواي"
+        ]
+
+        let featuredByTeam: [String: [(name: String, pos: String, ovr: Int, age: Int, nation: String, value: Int)]] = [
+            "مانشستر سيتي": [("إيرلينغ هالاند", "ST", 91, 25, "النرويج", 185), ("رودري", "DM", 90, 29, "إسبانيا", 130), ("كيفين دي بروين", "CM", 89, 34, "بلجيكا", 75)],
+            "ليفربول": [("محمد صلاح", "RW", 90, 34, "مصر", 100), ("فيرجيل فان دايك", "CB", 88, 35, "هولندا", 65)],
+            "أرسنال": [("بوكايو ساكا", "RW", 88, 25, "إنجلترا", 125), ("مارتن أوديغارد", "AM", 88, 27, "النرويج", 110)],
+            "أتلتيكو مدريد": [
+                ("Jan Oblak", "GK", 88, 33, "سلوفينيا", 52),
+                ("Juan Musso", "GK", 81, 32, "الأرجنتين", 22),
+                ("Jose Maria Gimenez", "CB", 85, 31, "أوروغواي", 64),
+                ("Robin Le Normand", "CB", 84, 30, "إسبانيا", 56),
+                ("Clement Lenglet", "CB", 82, 31, "فرنسا", 30),
+                ("Nahuel Molina", "RB", 83, 28, "الأرجنتين", 44),
+                ("Matteo Ruggeri", "LB", 80, 24, "إيطاليا", 30),
+                ("Marcos Llorente", "RB", 84, 31, "إسبانيا", 46),
+                ("David Hancko", "CB", 82, 29, "سلوفاكيا", 34),
+                ("Marc Pubill", "RB", 78, 23, "إسبانيا", 18),
+                ("Johnny Cardoso", "DM", 83, 25, "الولايات المتحدة", 52),
+                ("Koke", "CM", 83, 34, "إسبانيا", 20),
+                ("Pablo Barrios", "CM", 82, 23, "إسبانيا", 44),
+                ("Rodrigo Mendoza", "CM", 74, 20, "إسبانيا", 9),
+                ("Obed Vargas", "CM", 78, 21, "المكسيك", 16),
+                ("Ademola Lookman", "SS", 85, 29, "نيجيريا", 72),
+                ("Antoine Griezmann", "SS", 87, 35, "فرنسا", 48),
+                ("Alexander Sorloth", "ST", 83, 31, "النرويج", 34),
+                ("Alex Baena", "LW", 84, 25, "إسبانيا", 50),
+                ("Thiago Almada", "AM", 83, 25, "الأرجنتين", 46),
+                ("Julian Alvarez", "ST", 88, 27, "الأرجنتين", 126),
+                ("Giuliano Simeone", "RW", 80, 24, "الأرجنتين", 26),
+                ("Nico Gonzalez", "RW", 82, 28, "الأرجنتين", 36)
+            ],
+            "ريال مدريد": [
+                ("Thibaut Courtois", "GK", 89, 33, "بلجيكا", 45),
+                ("Andriy Lunin", "GK", 82, 27, "أوكرانيا", 28),
+                ("Dani Carvajal", "RB", 84, 33, "إسبانيا", 35),
+                ("Eder Militao", "CB", 85, 28, "البرازيل", 72),
+                ("David Alaba", "CB", 83, 34, "النمسا", 30),
+                ("Trent Alexander-Arnold", "RB", 88, 28, "إنجلترا", 92),
+                ("Raul Asencio", "CB", 78, 22, "إسبانيا", 20),
+                ("Alvaro Carreras", "LB", 79, 23, "إسبانيا", 24),
+                ("Fran Garcia", "LB", 81, 26, "إسبانيا", 32),
+                ("Antonio Rudiger", "CB", 88, 33, "ألمانيا", 52),
+                ("Ferland Mendy", "LB", 83, 31, "فرنسا", 38),
+                ("Dean Huijsen", "CB", 83, 21, "إسبانيا", 58),
+                ("Jude Bellingham", "AM", 90, 23, "إنجلترا", 175),
+                ("Eduardo Camavinga", "CM", 86, 24, "فرنسا", 95),
+                ("Federico Valverde", "CM", 89, 28, "أوروغواي", 130),
+                ("Aurelien Tchouameni", "DM", 87, 26, "فرنسا", 110),
+                ("Arda Guler", "AM", 84, 21, "تركيا", 66),
+                ("Dani Ceballos", "CM", 81, 30, "إسبانيا", 30),
+                ("Thiago Pitarch", "CM", 72, 20, "إسبانيا", 8),
+                ("Vinicius Junior", "LW", 91, 26, "البرازيل", 180),
+                ("Kylian Mbappe", "ST", 92, 27, "فرنسا", 210),
+                ("Rodrygo", "RW", 87, 26, "البرازيل", 115),
+                ("Gonzalo Garcia", "ST", 79, 22, "إسبانيا", 18),
+                ("Brahim Diaz", "RW", 84, 27, "المغرب", 58),
+                ("Franco Mastantuono", "RW", 82, 19, "الأرجنتين", 70)
+            ],
+            "برشلونة": [
+                ("Robert Lewandowski", "ST", 89, 37, "بولندا", 52),
+                ("Lamine Yamal", "RW", 88, 19, "إسبانيا", 132),
+                ("Raphinha", "LW", 87, 30, "البرازيل", 92),
+                ("Ferran Torres", "ST", 84, 27, "إسبانيا", 55),
+                ("Marcus Rashford", "LW", 86, 29, "إنجلترا", 78),
+                ("Rooney Bardghji", "RW", 79, 21, "السويد", 26),
+                ("Pedri", "CM", 88, 23, "إسبانيا", 115),
+                ("Gavi", "CM", 86, 22, "إسبانيا", 98),
+                ("Frenkie de Jong", "CM", 87, 29, "هولندا", 88),
+                ("Fermin Lopez", "AM", 83, 23, "إسبانيا", 52),
+                ("Dani Olmo", "AM", 85, 28, "إسبانيا", 66),
+                ("Marc Casado", "DM", 82, 23, "إسبانيا", 42),
+                ("Marc Bernal", "DM", 78, 19, "إسبانيا", 22),
+                ("Joao Cancelo", "RB", 85, 32, "البرتغال", 64),
+                ("Alejandro Balde", "LB", 84, 23, "إسبانيا", 62),
+                ("Ronald Araujo", "CB", 87, 28, "أوروغواي", 95),
+                ("Pau Cubarsi", "CB", 84, 20, "إسبانيا", 70),
+                ("Andreas Christensen", "CB", 84, 30, "الدنمارك", 52),
+                ("Gerard Martin", "LB", 77, 24, "إسبانيا", 18),
+                ("Jules Kounde", "RB", 86, 28, "فرنسا", 82),
+                ("Eric Garcia", "CB", 81, 25, "إسبانيا", 35),
+                ("Xavi Espart", "RB", 72, 20, "إسبانيا", 8),
+                ("Joan Garcia", "GK", 82, 25, "إسبانيا", 30),
+                ("Wojciech Szczesny", "GK", 84, 36, "بولندا", 22)
+            ],
+            "بايرن ميونخ": [("هاري كين", "ST", 90, 33, "إنجلترا", 110), ("جمال موسيالا", "AM", 88, 24, "ألمانيا", 130)],
+            "باريس سان جيرمان": [("عثمان ديمبيلي", "RW", 87, 29, "فرنسا", 95), ("أشرف حكيمي", "RB", 86, 28, "المغرب", 90)],
+            "إنتر ميلان": [("لاوتارو مارتينيز", "ST", 88, 29, "الأرجنتين", 115)],
+            "يوفنتوس": [("دوشان فلاهوفيتش", "ST", 84, 27, "صربيا", 78)],
+            "ميلان": [("رافاييل لياو", "LW", 86, 27, "البرتغال", 96)],
+            "نابولي": [("فيكتور أوسيمين", "ST", 87, 28, "نيجيريا", 110)]
+        ]
+
+        var output: [MarketPlayer] = []
+
+        for (leagueIndex, league) in topLeagues.enumerated() {
+            for (teamIndex, teamName) in league.teams.enumerated() {
+                var teamOutput: [MarketPlayer] = []
+                var usedNames: Set<String> = []
+
+                if let featured = featuredByTeam[teamName] {
+                    for featuredPlayer in featured {
+                        let month = (featuredPlayer.ovr % 12) + 1
+                        let day = (featuredPlayer.ovr % 27) + 1
+                        let year = Calendar.current.component(.year, from: Date()) - featuredPlayer.age
+                        let birthDate = Calendar.current.date(from: DateComponents(year: year, month: month, day: day)) ?? Date()
+                        let salaryK = max(2200, featuredPlayer.value * 32)
+                        let contractYears = max(1, 5 - (featuredPlayer.age - 24) / 4)
+
+                        teamOutput.append(
+                            MarketPlayer(
+                                id: UUID(),
+                                name: featuredPlayer.name,
+                                age: featuredPlayer.age,
+                                position: featuredPlayer.pos,
+                                overall: featuredPlayer.ovr,
+                                club: teamName,
+                                league: league.name,
+                                nationality: featuredPlayer.nation,
+                                marketValueM: featuredPlayer.value,
+                                salaryK: salaryK,
+                                contractYears: contractYears,
+                                preferredFoot: featuredPlayer.pos == "RW" ? "اليسرى" : "اليمنى",
+                                heightCM: featuredPlayer.pos == "GK" ? 191 : 178 + (featuredPlayer.ovr % 13),
+                                potential: min(95, featuredPlayer.ovr + max(1, 7 - max(featuredPlayer.age - 21, 0) / 2)),
+                                birthDate: birthDate,
+                                isFeatured: true
+                            )
+                        )
+                        usedNames.insert(featuredPlayer.name)
+                    }
+                }
+
+                var idx = 0
+                while teamOutput.count < 24 {
+                    let seed = stableSeed(teamName: teamName, leagueIndex: leagueIndex, teamIndex: teamIndex, playerIndex: idx)
+                    let position = positionPattern[idx % positionPattern.count]
+                    let roleBase = baseRating(for: position)
+                    let clubBoost = max(0, 10 - teamIndex / 2)
+                    let rating = clamp(roleBase + clubBoost + (seed % 11) - 5, min: 60, max: 89)
+                    let age = 17 + (seed % 17)
+                    let potential = clamp(rating + 3 + (seed % 8), min: rating + 1, max: 94)
+                    let nationality = nationalities[seed % nationalities.count]
+                    let height = playerHeight(for: position, seed: seed)
+                    let foot = preferredFoot(seed: seed)
+                    let marketValue = clamp((rating - 52) * 3 + (potential - rating) + max(0, 28 - age), min: 2, max: 150)
+                    let salaryK = clamp((marketValue * 25) + (rating * 11), min: 450, max: 12000)
+                    let contractYears = 1 + (seed % 5)
+                    let month = (seed % 12) + 1
+                    let day = (seed % 27) + 1
+                    let year = Calendar.current.component(.year, from: Date()) - age
+                    let birthDate = Calendar.current.date(from: DateComponents(year: year, month: month, day: day)) ?? Date()
+
+                    var generatedName = "\(firstNames[seed % firstNames.count]) \(lastNames[(seed / 5) % lastNames.count])"
+                    if usedNames.contains(generatedName) {
+                        generatedName += " \(idx + 1)"
+                    }
+                    usedNames.insert(generatedName)
+
+                    teamOutput.append(
+                        MarketPlayer(
+                            id: UUID(),
+                            name: generatedName,
+                            age: age,
+                            position: position,
+                            overall: rating,
+                            club: teamName,
+                            league: league.name,
+                            nationality: nationality,
+                            marketValueM: marketValue,
+                            salaryK: salaryK,
+                            contractYears: contractYears,
+                            preferredFoot: foot,
+                            heightCM: height,
+                            potential: potential,
+                            birthDate: birthDate,
+                            isFeatured: false
+                        )
+                    )
+
+                    idx += 1
+                }
+
+                output.append(contentsOf: teamOutput)
+            }
+        }
+
+        return output
+    }
+
+    private func stableSeed(teamName: String, leagueIndex: Int, teamIndex: Int, playerIndex: Int) -> Int {
+        let value = teamName.unicodeScalars.reduce(0) { partial, scalar in
+            partial + Int(scalar.value)
+        }
+        return value + leagueIndex * 919 + teamIndex * 173 + playerIndex * 97
+    }
+
+    private func baseRating(for position: String) -> Int {
+        switch position {
+        case "GK": return 70
+        case "CB": return 72
+        case "RB", "LB": return 71
+        case "DM": return 73
+        case "CM": return 72
+        case "AM": return 74
+        case "RW", "LW": return 74
+        case "ST": return 75
+        case "RM", "LM": return 71
+        default: return 70
+        }
+    }
+
+    private func playerHeight(for position: String, seed: Int) -> Int {
+        switch position {
+        case "GK":
+            return 186 + (seed % 11)
+        case "CB", "ST":
+            return 180 + (seed % 14)
+        case "RB", "LB", "DM":
+            return 173 + (seed % 13)
+        default:
+            return 169 + (seed % 12)
+        }
+    }
+
+    private func preferredFoot(seed: Int) -> String {
+        if seed % 8 == 0 {
+            return "كلتا القدمين"
+        }
+        return seed % 2 == 0 ? "اليمنى" : "اليسرى"
+    }
+
+    private func clamp(_ value: Int, min: Int, max: Int) -> Int {
+        Swift.max(min, Swift.min(max, value))
+    }
+
+    private struct TransferPlayerDetailsView: View {
+        let language: AppLanguage
+        let player: MarketPlayer
+        let isShortlisted: Bool
+        let onBack: () -> Void
+        let onNegotiate: () -> Void
+        let onToggleShortlist: () -> Void
+
+        private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+            language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+        }
+
+        private var appLocale: Locale {
+            Locale(identifier: language.localeIdentifier)
+        }
+
+        var body: some View {
+            ZStack {
+                LinearGradient(
+                    colors: [Color(hex: 0x050916), Color(hex: 0x121E45), Color(hex: 0x081632)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+
+                ScrollView(.vertical, showsIndicators: false) {
+                    VStack(spacing: 12) {
+                        topBar
+                        heroCard
+                        infoSection(
+                            title: t(ar: "المعلومات الشخصية", en: "Personal", hi: "व्यक्तिगत", zh: "个人信息", ku: "کەسی"),
+                            icon: "person.crop.circle.fill",
+                            rows: [
+                                DetailRow(title: t(ar: "العمر", en: "Age", hi: "उम्र", zh: "年龄", ku: "تەمەن"), value: "\(player.age)", tint: FootballTheme.accentCyan),
+                                DetailRow(title: t(ar: "الجنسية", en: "Nationality", hi: "राष्ट्रीयता", zh: "国籍", ku: "نەتەوە"), value: localizedDisplayName(player.nationality, in: language), tint: FootballTheme.pointsYellow),
+                                DetailRow(title: t(ar: "تاريخ الميلاد", en: "Birth Date", hi: "जन्म तिथि", zh: "出生日期", ku: "بەرواری لەدایکبوون"), value: birthDateText, tint: FootballTheme.accentGreen),
+                                DetailRow(title: t(ar: "الطول", en: "Height", hi: "कद", zh: "身高", ku: "درێژی"), value: "\(player.heightCM) cm", tint: FootballTheme.accentCyan)
+                            ]
+                        )
+                        infoSection(
+                            title: t(ar: "المعلومات الفنية", en: "Technical", hi: "तकनीकी", zh: "技术信息", ku: "تەکنیکی"),
+                            icon: "sportscourt.fill",
+                            rows: [
+                                DetailRow(title: t(ar: "المركز", en: "Position", hi: "पोज़िशन", zh: "位置", ku: "پۆست"), value: player.position, tint: FootballTheme.accentGreen),
+                                DetailRow(title: t(ar: "التقييم", en: "Overall", hi: "रेटिंग", zh: "评分", ku: "هەڵسەنگاندن"), value: "\(player.overall)", tint: FootballTheme.pointsYellow),
+                                DetailRow(title: t(ar: "الإمكانيات", en: "Potential", hi: "पोटेंशियल", zh: "潜力", ku: "توانا"), value: "\(player.potential)", tint: FootballTheme.accentCyan),
+                                DetailRow(title: t(ar: "القدم المفضلة", en: "Preferred Foot", hi: "पसंदीदा पैर", zh: "惯用脚", ku: "پێی دڵخواز"), value: player.preferredFoot, tint: FootballTheme.accentGreen)
+                            ]
+                        )
+                        infoSection(
+                            title: t(ar: "العقد / القيمة", en: "Contract / Value", hi: "अनुबंध / मूल्य", zh: "合同 / 价值", ku: "گرێبەست / نرخ"),
+                            icon: "briefcase.fill",
+                            rows: [
+                                DetailRow(title: t(ar: "النادي الحالي", en: "Current Club", hi: "वर्तमान क्लब", zh: "当前俱乐部", ku: "تیمی ئێستا"), value: localizedDisplayName(player.club, in: language), tint: FootballTheme.accentCyan),
+                                DetailRow(title: t(ar: "الراتب", en: "Salary", hi: "वेतन", zh: "薪资", ku: "مووچە"), value: "$\(player.salaryK)K", tint: FootballTheme.pointsYellow),
+                                DetailRow(title: t(ar: "القيمة السوقية", en: "Market Value", hi: "मार्केट वैल्यू", zh: "市场价值", ku: "نرخی بازاڕ"), value: "$\(player.marketValueM)M", tint: FootballTheme.accentGreen),
+                                DetailRow(title: t(ar: "مدة العقد", en: "Contract", hi: "अनुबंध", zh: "合同期限", ku: "ماوەی گرێبەست"), value: "\(player.contractYears) \(t(ar: "سنوات", en: "years", hi: "साल", zh: "年", ku: "ساڵ"))", tint: FootballTheme.pointsYellow)
+                            ]
+                        )
+
+                        VStack(spacing: 8) {
+                            Button(action: onNegotiate) {
+                                HStack(spacing: 7) {
+                                    Image(systemName: "signature")
+                                        .font(.system(size: 14, weight: .black))
+                                    Text(t(ar: "بدء التفاوض والتعاقد", en: "Start Negotiation", hi: "बातचीत शुरू करें", zh: "开始谈判", ku: "دەستپێکردنی دانوستان"))
+                                        .font(.system(size: 15, weight: .black))
+                                }
+                                .foregroundStyle(.black)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .fill(FootballTheme.pitchGreen)
+                                )
+                            }
+                            .buttonStyle(InteractivePressButtonStyle())
+
+                            Button(action: onToggleShortlist) {
+                                Text(
+                                    isShortlisted
+                                        ? t(ar: "إزالة من القائمة المختصرة", en: "Remove from Shortlist", hi: "शॉर्टलिस्ट से हटाएँ", zh: "移出候选名单", ku: "لابردن لە لیستی کورت")
+                                        : t(ar: "إضافة إلى القائمة المختصرة", en: "Add to Shortlist", hi: "शॉर्टलिस्ट में जोड़ें", zh: "加入候选名单", ku: "زیادکردن بۆ لیستی کورت")
+                                )
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                        .fill(Color.white.opacity(0.10))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                                .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                                        )
+                                )
+                            }
+                            .buttonStyle(InteractivePressButtonStyle())
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 8)
+                    .padding(.bottom, 14)
+                }
+            }
+            .navigationBarBackButtonHidden(true)
+            .environment(\.layoutDirection, .rightToLeft)
+        }
+
+        private var topBar: some View {
+            HStack {
+                Button {
+                    onBack()
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12, weight: .black))
+                        Text(t(ar: "السوق", en: "Market", hi: "मार्केट", zh: "市场", ku: "بازاڕ"))
+                            .font(.system(size: 13, weight: .black))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        Capsule().fill(Color.white.opacity(0.11))
+                    )
+                    .overlay(
+                        Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(InteractivePressButtonStyle())
+
+                Spacer()
+
+                Text(t(ar: "تفاصيل اللاعب", en: "Player Details", hi: "खिलाड़ी विवरण", zh: "球员详情", ku: "وردەکاری یاریزان"))
+                    .font(.system(size: 16, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+            }
+        }
+
+        private var heroCard: some View {
+            VStack(spacing: 9) {
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: 0x2647A1), Color(hex: 0x2E78D5), Color(hex: 0x1A2A76)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                        )
+
+                    HStack(spacing: 6) {
+                        Text(player.position)
+                        Text("OVR \(player.overall)")
+                    }
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Capsule().fill(Color.black.opacity(0.24)))
+                    .padding(12)
+
+                    VStack(spacing: 8) {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.94), Color.white.opacity(0.66)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 116, height: 116)
+                            .overlay(
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 52, weight: .black))
+                                    .foregroundStyle(Color(hex: 0x1E4E97))
+                            )
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.42), lineWidth: 1)
+                            )
+
+                        Text(localizedDisplayName(player.name, in: language))
+                            .font(.system(size: 26, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+
+                        Text("\(localizedDisplayName(player.club, in: language)) • \(localizedDisplayName(player.nationality, in: language))")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(.white.opacity(0.76))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                    }
+                    .padding(.vertical, 18)
+                }
+                .frame(height: 298)
+                .shadow(color: FootballTheme.accentCyan.opacity(0.26), radius: 16, x: 0, y: 8)
+            }
+        }
+
+        private var birthDateText: String {
+            let formatter = DateFormatter()
+            formatter.locale = appLocale
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return formatter.string(from: player.birthDate)
+        }
+
+        private func infoSection(title: String, icon: String, rows: [DetailRow]) -> some View {
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(spacing: 7) {
+                    Image(systemName: icon)
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(FootballTheme.accentCyan)
+                    Text(title)
+                        .font(.system(size: 16, weight: .black, design: .rounded))
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    ForEach(rows) { row in
+                        VStack(alignment: .trailing, spacing: 4) {
+                            Text(row.title)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white.opacity(0.68))
+                                .lineLimit(1)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            Text(row.value)
+                                .font(.system(size: 14, weight: .black))
+                                .foregroundStyle(row.tint)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.78)
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.black.opacity(0.20))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                        .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                                )
+                        )
+                    }
+                }
+            }
+            .padding(11)
+            .background(
+                RoundedRectangle(cornerRadius: 17, style: .continuous)
+                    .fill(Color.white.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 17, style: .continuous)
+                            .stroke(Color.white.opacity(0.13), lineWidth: 1)
+                    )
+            )
+        }
+    }
+
+    private struct TransferNegotiationSheetView: View {
+        let language: AppLanguage
+        let player: MarketPlayer
+        let budgetM: Int
+        let onSubmit: (_ offerM: Int, _ salaryK: Int, _ years: Int, _ bonusM: Int) -> Void
+        let onCancel: () -> Void
+
+        @State private var offerValueText: String
+        @State private var salaryText: String
+        @State private var yearsText: String
+        @State private var bonusText: String
+
+        init(
+            language: AppLanguage,
+            player: MarketPlayer,
+            budgetM: Int,
+            onSubmit: @escaping (_ offerM: Int, _ salaryK: Int, _ years: Int, _ bonusM: Int) -> Void,
+            onCancel: @escaping () -> Void
+        ) {
+            self.language = language
+            self.player = player
+            self.budgetM = budgetM
+            self.onSubmit = onSubmit
+            self.onCancel = onCancel
+            _offerValueText = State(initialValue: "\(max(player.marketValueM, 3))")
+            _salaryText = State(initialValue: "\(max(player.salaryK, 400))")
+            _yearsText = State(initialValue: "\(max(player.contractYears, 2))")
+            _bonusText = State(initialValue: "\(max(player.marketValueM / 10, 1))")
+        }
+
+        private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+            language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+        }
+
+        var body: some View {
+            NavigationStack {
+                ZStack {
+                    LinearGradient(
+                        colors: [Color(hex: 0x08122B), Color(hex: 0x102246), Color(hex: 0x0A1733)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .ignoresSafeArea()
+
+                    VStack(alignment: .trailing, spacing: 12) {
+                        HStack {
+                            Button {
+                                onCancel()
+                            } label: {
+                                Text(t(ar: "إلغاء", en: "Cancel", hi: "रद्द", zh: "取消", ku: "هەڵوەشاندنەوە"))
+                                    .font(.system(size: 13, weight: .black))
+                                    .foregroundStyle(.white.opacity(0.84))
+                            }
+                            .buttonStyle(.plain)
+
+                            Spacer()
+
+                            Text(t(ar: "نافذة التفاوض", en: "Negotiation", hi: "बातचीत", zh: "谈判", ku: "دانوستان"))
+                                .font(.system(size: 18, weight: .black, design: .rounded))
+                                .foregroundStyle(.white)
+                        }
+
+                        Text(localizedDisplayName(player.name, in: language))
+                            .font(.system(size: 22, weight: .black, design: .rounded))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+
+                        Text("\(t(ar: "الميزانية المتاحة", en: "Available Budget", hi: "उपलब्ध बजट", zh: "可用预算", ku: "بودجەی بەردەست")): $\(budgetM)M")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundStyle(FootballTheme.pointsYellow)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+
+                        inputRow(title: t(ar: "قيمة العرض (مليون)", en: "Offer Value (M)", hi: "ऑफ़र राशि (M)", zh: "报价（百万）", ku: "نرخی پێشنیار (م)") , text: $offerValueText)
+                        inputRow(title: t(ar: "الراتب السنوي (ألف)", en: "Annual Salary (K)", hi: "वार्षिक वेतन (K)", zh: "年薪（千）", ku: "مووچەی ساڵانە (هەزار)") , text: $salaryText)
+                        inputRow(title: t(ar: "مدة العقد (سنوات)", en: "Contract Years", hi: "अनुबंध वर्ष", zh: "合同年限", ku: "ماوەی گرێبەست (ساڵ)") , text: $yearsText)
+                        inputRow(title: t(ar: "مكافأة التوقيع (مليون)", en: "Signing Bonus (M)", hi: "साइनिंग बोनस (M)", zh: "签字费（百万）", ku: "خەڵاتی واژۆ (م)") , text: $bonusText)
+
+                        Button {
+                            submitOffer()
+                        } label: {
+                            HStack(spacing: 7) {
+                                Image(systemName: "paperplane.fill")
+                                    .font(.system(size: 13, weight: .black))
+                                Text(t(ar: "إرسال العرض", en: "Send Offer", hi: "ऑफ़र भेजें", zh: "发送报价", ku: "ناردنی پێشنیار"))
+                                    .font(.system(size: 15, weight: .black))
+                            }
+                            .foregroundStyle(.black.opacity(0.9))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .fill(FootballTheme.pitchGreen)
+                            )
+                        }
+                        .buttonStyle(InteractivePressButtonStyle())
+
+                        Spacer(minLength: 0)
+                    }
+                    .padding(16)
+                }
+                .environment(\.layoutDirection, .rightToLeft)
+                .navigationBarHidden(true)
+            }
+        }
+
+        private func inputRow(title: String, text: Binding<String>) -> some View {
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+
+                TextField("", text: text)
+                    .font(.system(size: 15, weight: .black))
+                    .keyboardType(.numberPad)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.10))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.white.opacity(0.16), lineWidth: 1)
+                            )
+                    )
+                    .foregroundStyle(.white)
+            }
+        }
+
+        private func submitOffer() {
+            let offer = Int(offerValueText.filter(\.isNumber)) ?? max(player.marketValueM, 3)
+            let salary = Int(salaryText.filter(\.isNumber)) ?? max(player.salaryK, 400)
+            let years = max(1, Int(yearsText.filter(\.isNumber)) ?? 3)
+            let bonus = Int(bonusText.filter(\.isNumber)) ?? max(player.marketValueM / 10, 1)
+            onSubmit(offer, salary, years, bonus)
+        }
+    }
+}
+
 private struct NewsCard: View {
     let title: String
     let headline: String
@@ -6051,7 +11281,7 @@ private struct NewsCard: View {
                             Text(headline)
                                 .font(.system(size: compact ? 16 : 18, weight: .heavy))
                                 .foregroundStyle(.white)
-                                .lineLimit(2)
+                                .lineLimit(compact ? 1 : 2)
                                 .minimumScaleFactor(0.82)
                         }
                         Spacer(minLength: 8)
@@ -6072,13 +11302,15 @@ private struct NewsCard: View {
                 Text(summary)
                     .font(.system(size: compact ? 14 : 15, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.84))
-                    .lineLimit(compact ? 2 : 3)
+                    .lineLimit(compact ? 1 : 3)
                     .minimumScaleFactor(0.86)
 
-                Text(timeText)
-                    .font(.system(size: compact ? 12 : 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.64))
-                    .lineLimit(1)
+                if !compact {
+                    Text(timeText)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.64))
+                        .lineLimit(1)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(outerPadding)
@@ -6560,7 +11792,7 @@ private struct SettingsSheetView: View {
                                 .font(.system(size: 22, weight: .black, design: .rounded))
                                 .foregroundStyle(.white)
 
-                            ForEach(AppLanguage.allCases) { language in
+                            ForEach(AppLanguage.userSelectableLanguages) { language in
                                 Button {
                                     selectedLanguage = language
                                 } label: {
@@ -7352,6 +12584,27 @@ private struct MatchCenterView: View {
         case fast
     }
 
+    private enum MatchKickoffTime: Int, CaseIterable, Hashable {
+        case early
+        case afternoon
+        case evening
+        case night
+    }
+
+    private enum MatchWeather: Int, CaseIterable, Hashable {
+        case clear
+        case cloudy
+        case rainy
+        case stormy
+    }
+
+    private enum OpponentDifficulty: Int, CaseIterable, Hashable {
+        case easy
+        case balanced
+        case hard
+        case legendary
+    }
+
     let language: AppLanguage
     let teamName: String
     let opponentName: String
@@ -7381,6 +12634,9 @@ private struct MatchCenterView: View {
     @State private var matchApproach: MatchApproach = .balanced
     @State private var pressingStyle: MatchPressingStyle = .balanced
     @State private var matchTempo: MatchTempo = .normal
+    @State private var kickoffTime: MatchKickoffTime = .evening
+    @State private var matchWeather: MatchWeather = .clear
+    @State private var opponentDifficulty: OpponentDifficulty = .balanced
     @State private var commentaryEnabled = true
     @State private var showRecentFormDots = false
     @State private var selectedHistorySelection: RecentHistorySelection?
@@ -7907,6 +13163,63 @@ private struct MatchCenterView: View {
     private var settingsTab: some View {
         VStack(alignment: .trailing, spacing: 12) {
             settingBlock(
+                title: t(ar: "وقت المباراة", en: "Match Time", hi: "मैच समय", zh: "比赛时间", ku: "کاتی یاری")
+            ) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(MatchKickoffTime.allCases, id: \.self) { item in
+                            compactOptionChip(
+                                title: kickoffTimeLabel(item),
+                                isActive: kickoffTime == item
+                            ) {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    kickoffTime = item
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            settingBlock(
+                title: t(ar: "الطقس", en: "Weather", hi: "मौसम", zh: "天气", ku: "کەشوهەوا")
+            ) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(MatchWeather.allCases, id: \.self) { item in
+                            compactOptionChip(
+                                title: weatherLabel(item),
+                                isActive: matchWeather == item
+                            ) {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    matchWeather = item
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            settingBlock(
+                title: t(ar: "صعوبة الخصم", en: "Opponent Difficulty", hi: "प्रतिद्वंद्वी कठिनाई", zh: "对手难度", ku: "سەختیی نەیار")
+            ) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(OpponentDifficulty.allCases, id: \.self) { item in
+                            compactOptionChip(
+                                title: opponentDifficultyLabel(item),
+                                isActive: opponentDifficulty == item
+                            ) {
+                                withAnimation(.spring(response: 0.30, dampingFraction: 0.80)) {
+                                    opponentDifficulty = item
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            settingBlock(
                 title: t(ar: "أسلوب اللعب", en: "Play Style", hi: "खेल शैली", zh: "比赛风格", ku: "شێوازی یاری")
             ) {
                 HStack(spacing: 8) {
@@ -8000,6 +13313,23 @@ private struct MatchCenterView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.86)
                 .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isActive ? FootballTheme.pitchGreen : Color.white.opacity(0.08))
+                )
+        }
+        .buttonStyle(InteractivePressButtonStyle())
+    }
+
+    private func compactOptionChip(title: String, isActive: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(isActive ? .black : .white.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.80)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 9)
                 .background(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -8109,6 +13439,45 @@ private struct MatchCenterView: View {
         }
     }
 
+    private func kickoffTimeLabel(_ value: MatchKickoffTime) -> String {
+        switch value {
+        case .early:
+            return t(ar: "ظهرًا", en: "Noon", hi: "दोपहर", zh: "中午", ku: "نیوەڕۆ")
+        case .afternoon:
+            return t(ar: "عصرًا", en: "Afternoon", hi: "दोपहर बाद", zh: "下午", ku: "ئێوارە")
+        case .evening:
+            return t(ar: "مساءً", en: "Evening", hi: "शाम", zh: "傍晚", ku: "ئێوارە")
+        case .night:
+            return t(ar: "ليلًا", en: "Night", hi: "रात", zh: "夜间", ku: "شەو")
+        }
+    }
+
+    private func weatherLabel(_ value: MatchWeather) -> String {
+        switch value {
+        case .clear:
+            return t(ar: "مشمس", en: "Clear", hi: "साफ़", zh: "晴朗", ku: "ڕووناک")
+        case .cloudy:
+            return t(ar: "غائم", en: "Cloudy", hi: "बादल", zh: "多云", ku: "هەور")
+        case .rainy:
+            return t(ar: "ممطر", en: "Rainy", hi: "बारिश", zh: "下雨", ku: "باراناوی")
+        case .stormy:
+            return t(ar: "عاصف", en: "Stormy", hi: "तूफ़اني", zh: "暴风", ku: "با")
+        }
+    }
+
+    private func opponentDifficultyLabel(_ value: OpponentDifficulty) -> String {
+        switch value {
+        case .easy:
+            return t(ar: "سهل", en: "Easy", hi: "आसान", zh: "简单", ku: "ئاسان")
+        case .balanced:
+            return t(ar: "متوازن", en: "Balanced", hi: "संतुलित", zh: "均衡", ku: "هاوسەنگ")
+        case .hard:
+            return t(ar: "صعب", en: "Hard", hi: "कठिन", zh: "困难", ku: "سەخت")
+        case .legendary:
+            return t(ar: "أسطوري", en: "Legendary", hi: "लीजेंडरी", zh: "传奇", ku: "ئەفسانەیی")
+        }
+    }
+
     private var lineupRows: [[TeamPlayer]] {
         switch tacticalPlan {
         case .fourThreeThree:
@@ -8164,11 +13533,30 @@ private struct MatchCenterView: View {
         )
     }
 
+    private var configuredMatchDate: Date {
+        var components = Calendar.current.dateComponents([.year, .month, .day], from: matchDate)
+        switch kickoffTime {
+        case .early:
+            components.hour = 13
+            components.minute = 30
+        case .afternoon:
+            components.hour = 16
+            components.minute = 30
+        case .evening:
+            components.hour = 19
+            components.minute = 45
+        case .night:
+            components.hour = 22
+            components.minute = 0
+        }
+        return Calendar.current.date(from: components) ?? matchDate
+    }
+
     private var matchDateText: String {
         let formatter = DateFormatter()
         formatter.locale = appLocale
         formatter.setLocalizedDateFormatFromTemplate("EEEE d MMMM")
-        return formatter.string(from: matchDate)
+        return formatter.string(from: configuredMatchDate)
     }
 
     private var matchTimeText: String {
@@ -8176,7 +13564,7 @@ private struct MatchCenterView: View {
         formatter.locale = appLocale
         formatter.timeStyle = .short
         formatter.dateStyle = .none
-        return formatter.string(from: matchDate)
+        return formatter.string(from: configuredMatchDate)
     }
 
     private func beginMatchExperience() {
@@ -8184,10 +13572,11 @@ private struct MatchCenterView: View {
         minute = 0
         myGoals = 0
         oppGoals = 0
+        let kickoffInfo = "\(kickoffTimeLabel(kickoffTime)) • \(weatherLabel(matchWeather)) • \(opponentDifficultyLabel(opponentDifficulty))"
         events = [
             MatchEvent(
                 minute: 0,
-                text: t(ar: "صافرة البداية!", en: "Kickoff whistle!", hi: "किकऑफ़ सीटी!", zh: "开场哨响！", ku: "سڕوتی دەستپێک!")
+                text: "\(t(ar: "صافرة البداية!", en: "Kickoff whistle!", hi: "किकऑफ़ सीटी!", zh: "开场哨响！", ku: "سڕوتی دەستپێک!")) • \(kickoffInfo)"
             )
         ]
         isRunning = true
@@ -8267,6 +13656,12 @@ private struct MatchCenterView: View {
             Text("\(t(ar: "الخطة", en: "Plan", hi: "योजना", zh: "阵型", ku: "پلان")): \(tacticalPlan.rawValue) • \(approachLabel(matchApproach))")
                 .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(.white.opacity(0.86))
+
+            Text("\(t(ar: "الوقت", en: "Time", hi: "समय", zh: "时间", ku: "کات")): \(kickoffTimeLabel(kickoffTime)) • \(t(ar: "الطقس", en: "Weather", hi: "मौसम", zh: "天气", ku: "کەشوهەوا")): \(weatherLabel(matchWeather)) • \(t(ar: "الصعوبة", en: "Difficulty", hi: "कठिनाई", zh: "难度", ku: "سەختی")): \(opponentDifficultyLabel(opponentDifficulty))")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
 
             pitchView
                 .frame(height: 350)
@@ -8444,14 +13839,61 @@ private struct MatchCenterView: View {
             pressingAttackBoost = -3
         }
 
-        let eventChance = max(12, min(50, 24 + ((squadStrength - 70) / 2) + tacticalPlan.attackBoost + approachBoost))
+        let weatherEventModifier: Int
+        let weatherChanceModifier: Int
+        switch matchWeather {
+        case .clear:
+            weatherEventModifier = 1
+            weatherChanceModifier = 1
+        case .cloudy:
+            weatherEventModifier = 0
+            weatherChanceModifier = 0
+        case .rainy:
+            weatherEventModifier = -3
+            weatherChanceModifier = -5
+        case .stormy:
+            weatherEventModifier = -6
+            weatherChanceModifier = -9
+        }
+
+        let difficultyEventModifier: Int
+        let difficultyChanceModifier: Int
+        switch opponentDifficulty {
+        case .easy:
+            difficultyEventModifier = 1
+            difficultyChanceModifier = 8
+        case .balanced:
+            difficultyEventModifier = 0
+            difficultyChanceModifier = 0
+        case .hard:
+            difficultyEventModifier = 2
+            difficultyChanceModifier = -8
+        case .legendary:
+            difficultyEventModifier = 3
+            difficultyChanceModifier = -14
+        }
+
+        let eventChance = max(
+            10,
+            min(
+                52,
+                24
+                + ((squadStrength - 70) / 2)
+                + tacticalPlan.attackBoost
+                + approachBoost
+                + weatherEventModifier
+                + difficultyEventModifier
+            )
+        )
         let baseChance = 52
             + ((squadStrength - 72) / 2)
             + ((fanSatisfaction - 70) / 5)
             + tacticalPlan.attackBoost
             + pressingAttackBoost
             - (tacticalPlan.defenseBoost / 2)
-        let myChancePercent = max(28, min(82, baseChance))
+            + weatherChanceModifier
+            + difficultyChanceModifier
+        let myChancePercent = max(20, min(84, baseChance))
 
         if Bool.random() && Int.random(in: 0...100) < eventChance {
             let myChance = Int.random(in: 0...100) < myChancePercent
@@ -8955,15 +14397,13 @@ private struct CompetitionsView: View {
             loading = false
 
             if mappedStandings.isEmpty && mappedNext.isEmpty && mappedPast.isEmpty {
-                errorMessage = hasSportsDBKey
-                    ? "تعذر جلب بيانات دوري الأبطال حالياً"
-                    : t(
-                        ar: "أضف مفتاح API مدفوع لمصدر البيانات لعرض بيانات دوري الأبطال.",
-                        en: "Add a paid API key for the data provider to show Champions League data.",
-                        hi: "चैंपियंस लीग डेटा दिखाने के लिए डेटा प्रदाता की पेड API key जोड़ें।",
-                        zh: "请添加数据提供方的付费 API key 以显示欧冠数据。",
-                        ku: "بۆ پیشاندانی داتای لیگی پاڵەوانان، کلیلی APIی پارەدانەوەی سەرچاوەی داتا زیاد بکە."
-                    )
+                errorMessage = t(
+                    ar: "تعذر جلب البيانات حالياً",
+                    en: "Unable to fetch data right now",
+                    hi: "अभी डेटा लाना संभव नहीं",
+                    zh: "当前无法获取数据",
+                    ku: "لە ئێستادا ناتوانرێت داتا بهێنرێت"
+                )
             }
         }
     }
