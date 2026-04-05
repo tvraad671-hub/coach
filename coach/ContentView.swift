@@ -117,6 +117,11 @@ private enum GameStep {
     case dashboard
 }
 
+private enum HomeRoute {
+    case settings
+    case leagues
+}
+
 private enum MainMenuAction: String, CaseIterable, Identifiable {
     case quickMatch
     case careerMode
@@ -224,7 +229,7 @@ private struct League: Identifiable {
     let teams: [String]
 }
 
-private enum LiveTopLeague: String, CaseIterable, Identifiable {
+enum LiveTopLeague: String, CaseIterable, Identifiable {
     case championsLeague
     case premierLeague
     case laliga
@@ -233,6 +238,10 @@ private enum LiveTopLeague: String, CaseIterable, Identifiable {
     case ligue1
 
     var id: String { rawValue }
+
+    static var allCases: [LiveTopLeague] {
+        [.premierLeague, .laliga, .serieA, .championsLeague]
+    }
 
     var title: String {
         switch self {
@@ -245,7 +254,7 @@ private enum LiveTopLeague: String, CaseIterable, Identifiable {
         }
     }
 
-    func localizedTitle(in language: AppLanguage) -> String {
+    fileprivate func localizedTitle(in language: AppLanguage) -> String {
         switch self {
         case .championsLeague:
             return language.text(ar: "دوري الأبطال", en: "Champions League", hi: "चैंपियंस लीग", zh: "欧冠", ku: "لیگی پاڵەوانان")
@@ -273,9 +282,21 @@ private enum LiveTopLeague: String, CaseIterable, Identifiable {
         case .ligue1: return "4334"
         }
     }
+
+    // IDs from API-Football (API-SPORTS)
+    var apiFootballLeagueID: Int {
+        switch self {
+        case .championsLeague: return 2
+        case .premierLeague: return 39
+        case .laliga: return 140
+        case .serieA: return 135
+        case .bundesliga: return 78
+        case .ligue1: return 61
+        }
+    }
 }
 
-private struct LiveStandingRow: Identifiable {
+struct LiveStandingRow: Identifiable {
     let id: String
     let rank: Int
     let teamName: String
@@ -1000,6 +1021,10 @@ private final class ClubLogoStore: ObservableObject {
         case invalidZipArchive
         case noValidImages
         case downloadFailed
+        case forbiddenRequest
+        case resourceNotFound
+        case networkFailure
+        case decodingFailed
         case invalidImageData
         case invalidManifest
     }
@@ -1014,6 +1039,38 @@ private final class ClubLogoStore: ObservableObject {
 
     private struct RemoteLogosManifest: Decodable {
         let clubs: [String: String]
+
+        private enum CodingKeys: String, CodingKey {
+            case clubs
+            case teams
+            case logos
+        }
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+
+            if let clubs = try container.decodeIfPresent([String: String].self, forKey: .clubs), !clubs.isEmpty {
+                self.clubs = clubs
+                return
+            }
+
+            if let teams = try container.decodeIfPresent([String: String].self, forKey: .teams), !teams.isEmpty {
+                self.clubs = teams
+                return
+            }
+
+            if let logos = try container.decodeIfPresent([String: String].self, forKey: .logos), !logos.isEmpty {
+                self.clubs = logos
+                return
+            }
+
+            if let rootDictionary = try? decoder.singleValueContainer().decode([String: String].self), !rootDictionary.isEmpty {
+                self.clubs = rootDictionary
+                return
+            }
+
+            self.clubs = [:]
+        }
     }
 
     private struct RemoteLogoCacheEntry: Codable {
@@ -1148,29 +1205,62 @@ private final class ClubLogoStore: ObservableObject {
     }
 
     func fetchRemoteManifest(from manifestURL: URL) async throws -> [RemoteLogoDownloadItem] {
+        let resolvedManifestURL = normalizedRawGitHubURL(from: manifestURL) ?? manifestURL
+        logLogoSyncDebug("manifest url: \(resolvedManifestURL.absoluteString)")
+
+        var request = URLRequest(url: resolvedManifestURL)
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+
         let data: Data
         do {
-            let (responseData, response) = try await URLSession.shared.data(from: manifestURL)
-            guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            let (responseData, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                logLogoSyncDebug("manifest failure: invalid HTTP response")
                 throw ImportError.downloadFailed
+            }
+
+            logLogoSyncDebug("manifest status: \(http.statusCode)")
+
+            guard (200...299).contains(http.statusCode) else {
+                let snippet = responseSnippet(from: responseData)
+                if !snippet.isEmpty {
+                    logLogoSyncDebug("manifest failure payload: \(snippet)")
+                }
+
+                switch http.statusCode {
+                case 403:
+                    throw ImportError.forbiddenRequest
+                case 404:
+                    throw ImportError.resourceNotFound
+                default:
+                    throw ImportError.downloadFailed
+                }
             }
             data = responseData
         } catch let importError as ImportError {
             throw importError
         } catch {
-            throw ImportError.downloadFailed
+            logLogoSyncDebug("manifest network error: \(type(of: error)) - \(error.localizedDescription)")
+            throw ImportError.networkFailure
         }
 
         let manifest: RemoteLogosManifest
         do {
             manifest = try JSONDecoder().decode(RemoteLogosManifest.self, from: data)
         } catch {
-            throw ImportError.invalidManifest
+            logLogoSyncDebug("manifest decoding error: \(type(of: error)) - \(error.localizedDescription)")
+            let snippet = responseSnippet(from: data)
+            if !snippet.isEmpty {
+                logLogoSyncDebug("manifest decoding payload: \(snippet)")
+            }
+            throw ImportError.decodingFailed
         }
 
         var items: [RemoteLogoDownloadItem] = []
         for (clubName, urlString) in manifest.clubs {
-            guard let remoteURL = URL(string: urlString) else { continue }
+            let trimmedURL = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let parsedURL = URL(string: trimmedURL) else { continue }
+            let remoteURL = normalizedRawGitHubURL(from: parsedURL) ?? parsedURL
             let fileName = remoteURL.lastPathComponent.isEmpty ? "\(normalizedLogoKey(from: clubName)).png" : remoteURL.lastPathComponent
             items.append(
                 RemoteLogoDownloadItem(
@@ -1200,17 +1290,20 @@ private final class ClubLogoStore: ObservableObject {
             guard !normalizedBaseName.isEmpty else { continue }
             activeKeys.insert(normalizedBaseName)
 
-            let urlExtension = item.remoteURL.pathExtension.lowercased()
+            let resolvedRemoteURL = normalizedRawGitHubURL(from: item.remoteURL) ?? item.remoteURL
+            logLogoSyncDebug("logo url [\(item.clubName)]: \(resolvedRemoteURL.absoluteString)")
+
+            let urlExtension = resolvedRemoteURL.pathExtension.lowercased()
             let fileNameExtension = URL(fileURLWithPath: item.fileName).pathExtension.lowercased()
             let finalExtension = supportedImageExtensions.contains(urlExtension)
                 ? urlExtension
                 : (supportedImageExtensions.contains(fileNameExtension) ? fileNameExtension : "png")
 
             let cacheEntry = cache[normalizedBaseName]
-            var request = URLRequest(url: item.remoteURL)
+            var request = URLRequest(url: resolvedRemoteURL)
             request.cachePolicy = .reloadIgnoringLocalCacheData
 
-            if cacheEntry?.sourceURL == item.remoteURL.absoluteString {
+            if cacheEntry?.sourceURL == resolvedRemoteURL.absoluteString {
                 if let etag = cacheEntry?.etag {
                     request.setValue(etag, forHTTPHeaderField: "If-None-Match")
                 }
@@ -1225,15 +1318,18 @@ private final class ClubLogoStore: ObservableObject {
             do {
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let http = response as? HTTPURLResponse else {
+                    logLogoSyncDebug("logo failure [\(item.clubName)]: invalid HTTP response")
                     throw ImportError.downloadFailed
                 }
                 statusCode = http.statusCode
                 responseData = data
                 responseHeaders = http.allHeaderFields
+                logLogoSyncDebug("logo status [\(item.clubName)]: \(statusCode)")
             } catch let importError as ImportError {
                 throw importError
             } catch {
-                throw ImportError.downloadFailed
+                logLogoSyncDebug("logo network error [\(item.clubName)]: \(type(of: error)) - \(error.localizedDescription)")
+                throw ImportError.networkFailure
             }
 
             if statusCode == 304 {
@@ -1245,7 +1341,19 @@ private final class ClubLogoStore: ObservableObject {
             }
 
             guard (200...299).contains(statusCode) else {
-                throw ImportError.downloadFailed
+                let snippet = responseSnippet(from: responseData)
+                if !snippet.isEmpty {
+                    logLogoSyncDebug("logo failure payload [\(item.clubName)]: \(snippet)")
+                }
+
+                switch statusCode {
+                case 403:
+                    throw ImportError.forbiddenRequest
+                case 404:
+                    throw ImportError.resourceNotFound
+                default:
+                    throw ImportError.downloadFailed
+                }
             }
 
             guard !responseData.isEmpty else {
@@ -1254,6 +1362,10 @@ private final class ClubLogoStore: ObservableObject {
 
 #if canImport(UIKit)
             guard UIImage(data: responseData) != nil else {
+                let snippet = responseSnippet(from: responseData)
+                if !snippet.isEmpty {
+                    logLogoSyncDebug("logo decoding failure payload [\(item.clubName)]: \(snippet)")
+                }
                 throw ImportError.invalidImageData
             }
 #endif
@@ -1270,7 +1382,7 @@ private final class ClubLogoStore: ObservableObject {
             let lastModified = responseHeaders.first { String(describing: $0.key).lowercased() == "last-modified" }?.value as? String
 
             cache[normalizedBaseName] = RemoteLogoCacheEntry(
-                sourceURL: item.remoteURL.absoluteString,
+                sourceURL: resolvedRemoteURL.absoluteString,
                 etag: etag,
                 lastModified: lastModified,
                 fileExtension: finalExtension
@@ -1319,6 +1431,15 @@ private final class ClubLogoStore: ObservableObject {
         importedLogoCount = countStoredCustomLogos()
         refreshToken = UUID()
         return removedCount
+    }
+
+    func applyLocalFallbackPlaceholders() {
+        ensureDefaultLogoFileIfNeeded()
+#if canImport(UIKit)
+        imageCache.removeAll()
+#endif
+        importedLogoCount = countStoredCustomLogos()
+        refreshToken = UUID()
     }
 
     func preferredPickerStartDirectory() -> URL? {
@@ -1756,6 +1877,52 @@ private final class ClubLogoStore: ObservableObject {
         return normalized
     }
 
+    private func normalizedRawGitHubURL(from url: URL) -> URL? {
+        guard let host = url.host?.lowercased() else { return nil }
+        if host == "raw.githubusercontent.com" {
+            return url
+        }
+
+        guard host == "github.com" else { return nil }
+
+        let components = url.pathComponents.filter { $0 != "/" }
+        guard components.count >= 5, components[2].lowercased() == "blob" else { return nil }
+
+        let owner = components[0]
+        let repository = components[1]
+        let branch = components[3]
+        let filePath = components.dropFirst(4).joined(separator: "/")
+        guard !filePath.isEmpty else { return nil }
+
+        var rawComponents = URLComponents()
+        rawComponents.scheme = "https"
+        rawComponents.host = "raw.githubusercontent.com"
+        rawComponents.path = "/\(owner)/\(repository)/\(branch)/\(filePath)"
+        return rawComponents.url
+    }
+
+    private func responseSnippet(from data: Data, maxLength: Int = 220) -> String {
+        guard !data.isEmpty else { return "" }
+
+        if let utf8Text = String(data: data, encoding: .utf8) {
+            let compact = utf8Text.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+            return String(compact.prefix(maxLength))
+        }
+
+        if let asciiText = String(data: data, encoding: .ascii) {
+            let compact = asciiText.replacingOccurrences(of: "\n", with: " ").replacingOccurrences(of: "\r", with: " ")
+            return String(compact.prefix(maxLength))
+        }
+
+        return "<binary \(data.count) bytes>"
+    }
+
+    private func logLogoSyncDebug(_ message: String) {
+#if DEBUG
+        print("[LogoSync] \(message)")
+#endif
+    }
+
     private func extractZipArchive(_ archiveData: Data, to destinationDirectory: URL) throws {
         let entries = try parseZipCentralDirectory(archiveData)
         guard !entries.isEmpty else {
@@ -2014,7 +2181,7 @@ private struct LogoImporterScreen: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 20)
 
-                Text(t(ar: "مركز الشعارات", en: "Logos Center", hi: "लोगो सेंटर", zh: "队徽中心", ku: "ناوەندی شعارەکان"))
+                Text(t(ar: "مركز الأندية", en: "Clubs Center", hi: "क्लब सेंटर", zh: "俱乐部中心", ku: "ناوەندی یانەکان"))
                     .font(.system(size: 34, weight: .black, design: .rounded))
                     .foregroundStyle(.white)
                     .padding(.top, 2)
@@ -2047,7 +2214,7 @@ private struct LogoImporterScreen: View {
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
 
-                        Text(t(ar: "تفعيل الشعارات المخصصة", en: "Activate custom logos", hi: "कस्टम लोगो सक्रिय करें", zh: "启用自定义队徽", ku: "چالاککردنی شعارە تایبەتیەکان"))
+                        Text(t(ar: "إدارة بيانات الأندية والمحتوى", en: "Manage clubs data and content", hi: "क्लब डेटा और सामग्री प्रबंधित करें", zh: "管理俱乐部数据与内容", ku: "بەڕێوەبردنی داتای یانەکان و ناوەڕۆک"))
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(FootballTheme.textSecondary.opacity(0.95))
 
@@ -2282,8 +2449,9 @@ struct ContentView: View {
     @State private var selectedTeam: String?
     @State private var currentTab: DashboardTab = .simulator
 
-    @State private var showSettings = false
+    @State private var showSettingsScreen = false
     @State private var showCompetitions = false
+    @State private var showTodayMatchesScreen = false
     @State private var showMatchCenter = false
     @State private var showTeamRecord = false
     @State private var showLeagueStandingsSheet = false
@@ -2343,6 +2511,7 @@ struct ContentView: View {
     @State private var liveErrorMessage = ""
     @State private var liveLastUpdated: Date?
     @State private var liveLoadedLeague: LiveTopLeague?
+    private let standingsService: StandingsServiceProtocol = StandingsService()
     @State private var hasAttemptedRestore = false
     @State private var savedCareerSnapshot: GameSaveData?
     @State private var showLogoImporter = false
@@ -2545,8 +2714,19 @@ struct ContentView: View {
                 }
             )
         }
-        .fullScreenCover(isPresented: $showSettings) {
-            SettingsSheetView(selectedLanguage: selectedLanguageBinding)
+        .fullScreenCover(isPresented: $showTodayMatchesScreen) {
+            TodayMatchesScreen(language: language)
+        }
+        .fullScreenCover(isPresented: $showSettingsScreen) {
+            SettingsSheetView(
+                selectedLanguage: selectedLanguageBinding,
+                onOpenClubCenter: {
+                    showSettingsScreen = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                        presentLogoImporter()
+                    }
+                }
+            )
         }
         .onAppear {
             restoreSavedGameIfNeeded()
@@ -2621,7 +2801,7 @@ struct ContentView: View {
 
     private var settingsButton: some View {
         Button {
-            showSettings = true
+            openRoute(.settings)
         } label: {
             Image(systemName: "gearshape.fill")
                 .font(.system(size: 19, weight: .black))
@@ -2636,49 +2816,43 @@ struct ContentView: View {
                         .stroke(FootballTheme.cardGlow.opacity(0.35), lineWidth: 1.2)
                 )
                 .shadow(color: .black.opacity(0.24), radius: 10, x: 0, y: 6)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
+        .zIndex(20)
         .accessibilityLabel(t(ar: "الإعدادات", en: "Settings", hi: "सेटिंग्स", zh: "设置", ku: "ڕێکخستن"))
     }
 
-    private var packCenterButton: some View {
+    private var footballScreenButton: some View {
         Button {
-            presentLogoImporter()
+            withAnimation(.spring(response: 0.40, dampingFraction: 0.86)) {
+                showTodayMatchesScreen = true
+            }
         } label: {
             ZStack {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [Color(hex: 0xFFE38A), Color(hex: 0xD99A1D)],
+                            colors: [Color(hex: 0xF5F8FF), Color(hex: 0xBFD2FF)],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
                     )
 
                 Circle()
-                    .stroke(Color.white.opacity(0.44), lineWidth: 1.2)
+                    .stroke(Color.white.opacity(0.62), lineWidth: 1.2)
 
-                Circle()
-                    .fill(Color.white.opacity(0.30))
-                    .frame(width: 14, height: 14)
-                    .offset(x: 12, y: -12)
-
-                if isImportingLogos || isLoadingLogoManifest {
-                    ProgressView()
-                        .tint(.black.opacity(0.78))
-                        .scaleEffect(0.92)
-                } else {
-                    Image(systemName: "shippingbox.fill")
-                        .font(.system(size: 18, weight: .black))
-                        .foregroundStyle(.black.opacity(0.84))
-                }
+                Image("12")
+                    .resizable()
+                    .scaledToFit()
+                    .padding(6)
             }
             .frame(width: 46, height: 46)
-            .shadow(color: Color(hex: 0xF2B647).opacity(0.58), radius: 14, x: 0, y: 7)
-            .shadow(color: Color.white.opacity(0.18), radius: 5, x: 0, y: -1)
+            .shadow(color: Color(hex: 0xB7CAFF).opacity(0.44), radius: 10, x: 0, y: 5)
+            .shadow(color: Color.white.opacity(0.18), radius: 4, x: 0, y: -1)
         }
         .buttonStyle(InteractivePressButtonStyle())
-        .accessibilityLabel(t(ar: "مركز الحزم", en: "Packs Center", hi: "पैक्स सेंटर", zh: "扩展包中心", ku: "ناوەندی پەکیجەکان"))
+        .accessibilityLabel(t(ar: "مباريات اليوم", en: "Today Matches", hi: "आज के मैच", zh: "今日比赛", ku: "یارییەکانی ئەمڕۆ"))
     }
 
     @ViewBuilder
@@ -2699,11 +2873,16 @@ struct ContentView: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 12) {
                 welcomeSimpleTopBar
+                    .zIndex(20)
                 welcomeEntryCard
+                    .zIndex(10)
                 continueCareerCard
                 welcomeStandingsSection
             }
             .padding(.bottom, 10)
+        }
+        .refreshable {
+            await loadLiveStandings(force: true)
         }
     }
 
@@ -2713,31 +2892,23 @@ struct ContentView: View {
         return HStack(spacing: 10) {
             if isRTL {
                 settingsButton
-                packCenterButton
+                footballScreenButton
                 Spacer(minLength: 8)
-                VStack(alignment: .trailing, spacing: 2) {
+                VStack(alignment: .trailing, spacing: 0) {
                     Text(mainMenuText(.screenTitle))
                         .font(.system(size: 24, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(mainMenuText(.screenSubtitle))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(FootballTheme.textSecondary.opacity(0.82))
                         .lineLimit(1)
                 }
             } else {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 0) {
                     Text(mainMenuText(.screenTitle))
                         .font(.system(size: 24, weight: .black, design: .rounded))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text(mainMenuText(.screenSubtitle))
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(FootballTheme.textSecondary.opacity(0.82))
-                        .lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                packCenterButton
+                footballScreenButton
                 settingsButton
             }
         }
@@ -2747,98 +2918,9 @@ struct ContentView: View {
 
     private var welcomeStandingsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Button {
-                    Task { await loadLiveStandings(force: true) }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 11, weight: .black))
-                        Text(t(ar: "تحديث", en: "Refresh", hi: "रीफ्रेश", zh: "刷新", ku: "نوێکردنەوە"))
-                            .font(.system(size: 12, weight: .black))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.12))
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.white.opacity(0.20), lineWidth: 1)
-                    )
-                }
-                .buttonStyle(InteractivePressButtonStyle())
-
-                Spacer(minLength: 0)
-
-                VStack(alignment: language.layoutDirection == .rightToLeft ? .trailing : .leading, spacing: 2) {
-                    Text(t(ar: "ترتيب الفرق", en: "Team Standings", hi: "टीम स्टैंडिंग्स", zh: "球队排名", ku: "ڕیزبەندی تیمەکان"))
-                        .font(.system(size: 20, weight: .black, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    if let liveLastUpdated {
-                        Text("\(t(ar: "آخر تحديث", en: "Last update", hi: "आख़िरी अपडेट", zh: "最后更新", ku: "دوایین نوێکردنەوە")): \(liveUpdatedText(from: liveLastUpdated))")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundStyle(FootballTheme.textSecondary.opacity(0.8))
-                            .lineLimit(1)
-                    }
-                }
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(LiveTopLeague.allCases) { league in
-                        Button {
-                            selectedLiveLeague = league
-                            Task { await loadLiveStandings(force: false) }
-                        } label: {
-                            Text(league.localizedTitle(in: language))
-                                .font(.system(size: 12, weight: .black))
-                                .foregroundStyle(selectedLiveLeague == league ? .black : .white.opacity(0.92))
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(
-                                    Capsule()
-                                        .fill(
-                                            selectedLiveLeague == league
-                                            ? FootballTheme.pitchGreen.opacity(0.96)
-                                            : FootballTheme.backgroundPrimary.opacity(0.52)
-                                        )
-                                )
-                                .overlay(
-                                    Capsule()
-                                        .stroke(
-                                            selectedLiveLeague == league
-                                            ? FootballTheme.pitchGreen.opacity(0.96)
-                                            : Color.white.opacity(0.18),
-                                            lineWidth: 1
-                                        )
-                                )
-                        }
-                        .buttonStyle(InteractivePressButtonStyle())
-                    }
-                }
-            }
-
-            if liveLoading {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .tint(.white)
-                    Text(t(ar: "جاري تحديث الترتيب...", en: "Updating standings...", hi: "स्टैंडिंग अपडेट हो रही है...", zh: "正在更新排名...", ku: "ڕیزبەندی نوێ دەکرێتەوە..."))
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.86))
-                }
-                .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
-            } else if liveStandings.isEmpty {
-                Text(t(ar: "لا توجد بيانات ترتيب حالياً", en: "No standings data right now", hi: "अभी कोई स्टैंडिंग डेटा नहीं", zh: "当前暂无排名数据", ku: "ئێستا هیچ داتای ڕیزبەندی نییە"))
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
-            } else {
-                welcomeStandingsTable
-            }
+            standingsSectionHeader
+            standingsTabs
+            standingsSectionContent
 
             if !liveErrorMessage.isEmpty {
                 Text(localizedDisplayText(liveErrorMessage, in: language))
@@ -2865,14 +2947,146 @@ struct ContentView: View {
         )
         .shadow(color: FootballTheme.cardGlow.opacity(0.16), radius: 14, x: 0, y: 8)
         .onAppear {
-            if liveStandings.isEmpty {
-                Task { await loadLiveStandings(force: false) }
-            }
+            Task { await loadLiveStandings(force: true) }
         }
         .onReceive(liveAutoRefreshTimer) { _ in
             guard step == .welcome else { return }
             Task { await loadLiveStandings(force: true) }
         }
+    }
+
+    private var standingsSectionHeader: some View {
+        HStack(spacing: 10) {
+            Button {
+                Task { await loadLiveStandings(force: true) }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(.system(size: 11, weight: .black))
+                    Text(t(ar: "تحديث", en: "Refresh", hi: "रीफ्रेश", zh: "刷新", ku: "نوێکردنەوە"))
+                        .font(.system(size: 12, weight: .black))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 11)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.12))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.20), lineWidth: 1)
+                )
+            }
+            .buttonStyle(InteractivePressButtonStyle())
+
+            Spacer(minLength: 0)
+
+            VStack(alignment: language.layoutDirection == .rightToLeft ? .trailing : .leading, spacing: 2) {
+                Text(t(ar: "ترتيب الفرق", en: "Team Standings", hi: "टीम स्टैंडिंग्स", zh: "球队排名", ku: "ڕیزبەندی تیمەکان"))
+                    .font(.system(size: 20, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+
+                if let liveLastUpdated {
+                    Text("\(t(ar: "آخر تحديث", en: "Last update", hi: "आख़िरी अपडेट", zh: "最后更新", ku: "دوایین نوێکردنەوە")): \(liveUpdatedText(from: liveLastUpdated))")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(FootballTheme.textSecondary.opacity(0.8))
+                        .lineLimit(1)
+                }
+            }
+        }
+    }
+
+    private var standingsTabs: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(LiveTopLeague.allCases) { league in
+                    Button {
+                        selectedLiveLeague = league
+                        Task { await loadLiveStandings(force: false) }
+                    } label: {
+                        Text(league.localizedTitle(in: language))
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundStyle(selectedLiveLeague == league ? .black : .white.opacity(0.92))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                Capsule()
+                                    .fill(
+                                        selectedLiveLeague == league
+                                        ? FootballTheme.pitchGreen.opacity(0.96)
+                                        : FootballTheme.backgroundPrimary.opacity(0.52)
+                                    )
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(
+                                        selectedLiveLeague == league
+                                        ? FootballTheme.pitchGreen.opacity(0.96)
+                                        : Color.white.opacity(0.18),
+                                        lineWidth: 1
+                                    )
+                            )
+                    }
+                    .buttonStyle(InteractivePressButtonStyle())
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var standingsSectionContent: some View {
+        if liveLoading {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .tint(.white)
+                Text(t(ar: "جاري تحديث الترتيب...", en: "Updating standings...", hi: "स्टैंडिंग अपडेट हो रही है...", zh: "正在更新排名...", ku: "ڕیزبەندی نوێ دەکرێتەوە..."))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.86))
+            }
+            .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
+        } else if liveStandings.isEmpty {
+            if !liveErrorMessage.isEmpty {
+                standingsErrorState
+            } else {
+                Text(t(ar: "لا توجد بيانات ترتيب حالياً", en: "No standings data right now", hi: "अभी कोई स्टैंडिंग डेटा नहीं", zh: "当前暂无排名数据", ku: "ئێستا هیچ داتای ڕیزبەندی نییە"))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
+            }
+        } else {
+            welcomeStandingsTable
+        }
+    }
+
+    private var standingsErrorState: some View {
+        VStack(spacing: 9) {
+            Text(localizedDisplayText(liveErrorMessage, in: language))
+                .font(.system(size: 13, weight: .bold))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(FootballTheme.pointsYellow.opacity(0.94))
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            Button {
+                Task { await loadLiveStandings(force: true) }
+            } label: {
+                Text(t(ar: "إعادة المحاولة", en: "Retry", hi: "फिर प्रयास करें", zh: "重试", ku: "دووبارە هەوڵبدە"))
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.14))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.24), lineWidth: 1)
+                    )
+            }
+            .buttonStyle(InteractivePressButtonStyle())
+        }
+        .frame(maxWidth: .infinity, minHeight: 92, alignment: .center)
     }
 
     private var welcomeStandingsTable: some View {
@@ -2909,7 +3123,7 @@ struct ContentView: View {
                     HStack(spacing: 0) {
                         liveValueCell("\(row.rank)", width: rankWidth, bold: true, color: rankColor)
 
-                        Text(localizedDisplayName(row.teamName, in: language))
+                        Text(row.teamName)
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(FootballTheme.textPrimary)
                             .lineLimit(1)
@@ -3081,6 +3295,25 @@ struct ContentView: View {
         }
     }
 
+    private func openRoute(_ route: HomeRoute) {
+        switch route {
+        case .settings:
+            openSettingsScreen()
+        case .leagues:
+            openLeagueSelectionScreen()
+        }
+    }
+
+    private func openSettingsScreen() {
+        showSettingsScreen = true
+    }
+
+    private func openLeagueSelectionScreen() {
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
+            step = .leagueSelection
+        }
+    }
+
     private func handleMainMenuAction(_ action: MainMenuAction) {
         switch action {
         case .quickMatch:
@@ -3095,15 +3328,11 @@ struct ContentView: View {
                     }
                 }
             } else {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
-                    step = .leagueSelection
-                }
+                openRoute(.leagues)
             }
 
         case .careerMode:
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
-                step = .leagueSelection
-            }
+            openRoute(.leagues)
 
         case .teamManagement:
             openMainMenuSectionRequiringCareer(
@@ -3123,7 +3352,7 @@ struct ContentView: View {
             showCompetitions = true
 
         case .settings:
-            showSettings = true
+            openRoute(.settings)
         }
     }
 
@@ -3147,9 +3376,7 @@ struct ContentView: View {
         let supportedLeagues = topLeagues.count
 
         return Button {
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.84)) {
-                step = .leagueSelection
-            }
+            openRoute(.leagues)
         } label: {
             ZStack {
                 RoundedRectangle(cornerRadius: 34, style: .continuous)
@@ -3579,9 +3806,11 @@ struct ContentView: View {
                 let manifestItems = try await ClubLogoStore.shared.fetchRemoteManifest(from: logosManifestURL)
                 remoteLogoManifestItems = manifestItems
             } catch let importError as ClubLogoStore.ImportError {
+                ClubLogoStore.shared.applyLocalFallbackPlaceholders()
                 logoImporterStatusIsSuccess = false
                 logoImporterStatusText = localizedLogoImportError(importError)
             } catch {
+                ClubLogoStore.shared.applyLocalFallbackPlaceholders()
                 logoImporterStatusIsSuccess = false
                 logoImporterStatusText = t(
                     ar: "تعذر قراءة ملف الحزمة من الخادم.",
@@ -3622,9 +3851,11 @@ struct ContentView: View {
                     ku: "شعارەکان بە سەرکەوتوویی چالاککران"
                 )
             } catch let importError as ClubLogoStore.ImportError {
+                ClubLogoStore.shared.applyLocalFallbackPlaceholders()
                 logoImporterStatusIsSuccess = false
                 logoImporterStatusText = localizedLogoImportError(importError)
             } catch {
+                ClubLogoStore.shared.applyLocalFallbackPlaceholders()
                 logoImporterStatusIsSuccess = false
                 logoImporterStatusText = t(
                     ar: "فشل تحميل الشعارات من الخادم.",
@@ -3668,11 +3899,19 @@ struct ContentView: View {
         case .noValidImages:
             return t(ar: "لم يتم العثور على صور شعارات صالحة (PNG/JPG).", en: "No valid logo images were found (PNG/JPG).", hi: "कोई मान्य लोगो इमेज नहीं मिली (PNG/JPG)।", zh: "未找到有效队徽图片（PNG/JPG）。", ku: "هیچ وێنەی شعارێکی دروست نەدۆزرایەوە (PNG/JPG).")
         case .downloadFailed:
-            return t(ar: "فشل تحميل الشعارات من روابط GitHub.", en: "Failed to download logos from GitHub links.", hi: "GitHub लिंक से लोगो डाउनलोड नहीं हुए।", zh: "从 GitHub 链接下载队徽失败。", ku: "داگرتنی شعارەکان لە لینکەکانی GitHub سەرکەوتوو نەبوو.")
+            return t(ar: "فشل تحميل بيانات الأندية من GitHub.", en: "Failed to load club data from GitHub.", hi: "GitHub से क्लब डेटा लोड नहीं हो सका।", zh: "从 GitHub 加载俱乐部数据失败。", ku: "بارکردنی داتای یانەکان لە GitHub سەرکەوتوو نەبوو.")
+        case .forbiddenRequest:
+            return t(ar: "تم رفض الوصول من GitHub (403). تحقق من الصلاحيات أو حدّ الطلبات.", en: "GitHub access was denied (403). Check permissions or rate limits.", hi: "GitHub ने एक्सेस अस्वीकार किया (403)। अनुमति या रेट लिमिट जांचें।", zh: "GitHub 拒绝访问（403），请检查权限或请求频率。", ku: "دەستگەیشتن لەلایەن GitHubەوە ڕەتکرایەوە (403). مۆڵەت یان سنووری داواکاری بپشکنە.")
+        case .resourceNotFound:
+            return t(ar: "ملف بيانات الأندية غير موجود على GitHub (404). تحقق من الرابط أو الفرع.", en: "Club data file was not found on GitHub (404). Check URL or branch.", hi: "GitHub पर क्लब डेटा फ़ाइल नहीं मिली (404)। URL या ब्रांच जांचें।", zh: "GitHub 上未找到俱乐部数据文件（404），请检查链接或分支。", ku: "پەڕگەی داتای یانەکان لە GitHub نەدۆزرایەوە (404). لینک یان بڕانچ بپشکنە.")
+        case .networkFailure:
+            return t(ar: "فشل الاتصال بـ GitHub. تحقق من الشبكة ثم أعد المحاولة.", en: "Network error while reaching GitHub. Check connection and retry.", hi: "GitHub से कनेक्शन में नेटवर्क त्रुटि हुई। कनेक्शन जांचकर दोबारा प्रयास करें।", zh: "连接 GitHub 时发生网络错误，请检查网络后重试。", ku: "هەڵەی تۆڕ ڕوویدا لە پەیوەندی بە GitHub. پاش پشکنینی تۆڕ دووبارە هەوڵبدە.")
+        case .decodingFailed:
+            return t(ar: "تعذّر تحليل بيانات الأندية القادمة من GitHub.", en: "Couldn't decode clubs data from GitHub.", hi: "GitHub से आए क्लब डेटा को पढ़ा नहीं जा सका।", zh: "无法解析来自 GitHub 的俱乐部数据。", ku: "نەتوانرا داتای یانەکان لە GitHub شیبکرێتەوە.")
         case .invalidImageData:
             return t(ar: "الملف المحمّل ليس صورة صالحة.", en: "Downloaded file is not a valid image.", hi: "डाउनलोड की गई फ़ाइल मान्य इमेज नहीं है।", zh: "下载的文件不是有效图片。", ku: "پەڕگەی داگیراو وێنەیەکی دروست نییە.")
         case .invalidManifest:
-            return t(ar: "ملف logos.json غير صالح أو لا يحتوي روابط شعارات.", en: "logos.json is invalid or has no logo links.", hi: "logos.json अमान्य है या इसमें लोगो लिंक नहीं हैं।", zh: "logos.json 无效或不包含队徽链接。", ku: "پەڕگەی logos.json دروست نییە یان لینکەکانی شعار لەخۆناگرێت.")
+            return t(ar: "ملف بيانات الأندية غير صالح أو لا يحتوي روابط صحيحة.", en: "Club data manifest is invalid or has no valid links.", hi: "क्लब डेटा manifest अमान्य है या इसमें सही लिंक नहीं हैं।", zh: "俱乐部数据清单无效或不包含有效链接。", ku: "مانیفێستی داتای یانەکان دروست نییە یان لینکێکی دروستی تێدا نییە.")
         }
     }
 
@@ -3726,231 +3965,23 @@ struct ContentView: View {
         return formatter.string(from: date)
     }
 
-    private func seasonCandidates() -> [String] {
-        let year = Calendar.current.component(.year, from: Date())
-        let current = "\(year - 1)-\(year)"
-        let previous = "\(year - 2)-\(year - 1)"
-        let next = "\(year)-\(year + 1)"
-        return [current, previous, next]
-    }
-
-    private func parsedEventDate(_ event: SportsDBEvent) -> Date {
-        if let ts = event.strTimestamp, let parsed = ISO8601DateFormatter().date(from: ts) {
-            return parsed
-        }
-        if let dateText = event.dateEvent {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyy-MM-dd"
-            if let parsed = formatter.date(from: dateText) {
-                return parsed
-            }
-        }
-        return .distantPast
-    }
-
-    private func fetchLiveStandingsRows(league: LiveTopLeague) async -> [SportsDBStanding] {
-        guard let key = configuredSportsDBAPIKey() else { return [] }
-        let seasons = seasonCandidates()
-
-        for season in seasons {
-            var components = URLComponents(string: "https://www.thesportsdb.com/api/v1/json/\(key)/lookuptable.php")
-            components?.queryItems = [
-                URLQueryItem(name: "l", value: league.sportsDBLeagueId),
-                URLQueryItem(name: "s", value: season)
-            ]
-
-            guard let url = components?.url else { continue }
-
-            guard
-                let (data, _) = try? await URLSession.shared.data(from: url),
-                let decoded = try? JSONDecoder().decode(SportsDBStandingsResponse.self, from: data)
-            else { continue }
-            let rows = decoded.table ?? []
-            if !rows.isEmpty {
-                return rows
+    private func localizedStandingsError(_ error: Error) -> String {
+        if let standingsError = error as? StandingsServiceError {
+            switch standingsError {
+            case .missingAPIKey:
+                return t(ar: "مفتاح API غير موجود. أضف FOOTBALL_API_KEY في Secrets.plist.", en: "API key is missing. Add FOOTBALL_API_KEY in Secrets.plist.", hi: "API key गायब है। Secrets.plist में FOOTBALL_API_KEY जोड़ें।", zh: "缺少 API key，请在 Secrets.plist 添加 FOOTBALL_API_KEY。", ku: "کلیلەکەی API نییە. FOOTBALL_API_KEY لە Secrets.plist زیاد بکە.")
+            case .httpStatus(let code):
+                return t(ar: "فشل تحميل الترتيب من الخادم (HTTP \(code)).", en: "Failed to load standings from server (HTTP \(code)).", hi: "सर्वर से स्टैंडिंग लोड नहीं हुई (HTTP \(code)).", zh: "从服务器加载排名失败（HTTP \(code)）。", ku: "بارکردنی ڕیزبەندی لە سێرڤەر شکستی هێنا (HTTP \(code)).")
+            case .invalidURL, .invalidResponse, .decodingFailed:
+                return t(ar: "تعذر قراءة بيانات الترتيب من المصدر المباشر.", en: "Couldn't parse standings from the live source.", hi: "लाइव स्रोत से स्टैंडिंग डेटा पढ़ा नहीं जा सका।", zh: "无法解析实时来源的排名数据。", ku: "نەتوانرا داتای ڕیزبەندی لە سەرچاوەی ڕاستەوخۆ بخوێنرێتەوە.")
             }
         }
 
-        var components = URLComponents(string: "https://www.thesportsdb.com/api/v1/json/\(key)/lookuptable.php")
-        components?.queryItems = [URLQueryItem(name: "l", value: league.sportsDBLeagueId)]
-        guard let url = components?.url else { return [] }
-
-        guard
-            let (data, _) = try? await URLSession.shared.data(from: url),
-            let decoded = try? JSONDecoder().decode(SportsDBStandingsResponse.self, from: data)
-        else { return [] }
-        let rows = decoded.table ?? []
-        if !rows.isEmpty {
-            return rows
+        if error is URLError {
+            return t(ar: "مشكلة اتصال أثناء تحميل الترتيب. تحقق من الإنترنت وحاول مجددًا.", en: "Network issue while loading standings. Check internet and retry.", hi: "स्टैंडिंग लोड करते समय नेटवर्क समस्या आई। इंटरनेट जांचें और दोबारा प्रयास करें।", zh: "加载排名时网络异常，请检查网络后重试。", ku: "کێشەی تۆڕ ڕوویدا لە بارکردنی ڕیزبەندی. ئینتەرنێت بپشکنە و دووبارە هەوڵبدە.")
         }
 
-        return []
-    }
-
-    private func fetchPastEvents(league: LiveTopLeague) async -> [SportsDBEvent] {
-        guard let key = configuredSportsDBAPIKey() else { return [] }
-        let seasons = seasonCandidates()
-
-        for season in seasons {
-            var components = URLComponents(string: "https://www.thesportsdb.com/api/v1/json/\(key)/eventspastleague.php")
-            components?.queryItems = [
-                URLQueryItem(name: "id", value: league.sportsDBLeagueId),
-                URLQueryItem(name: "s", value: season)
-            ]
-            guard let url = components?.url else { continue }
-
-            guard
-                let (data, _) = try? await URLSession.shared.data(from: url),
-                let decoded = try? JSONDecoder().decode(SportsDBEventsResponse.self, from: data)
-            else { continue }
-            let rows = decoded.events ?? []
-            if !rows.isEmpty { return rows }
-        }
-
-        guard let url = URL(string: "https://www.thesportsdb.com/api/v1/json/\(key)/eventspastleague.php?id=\(league.sportsDBLeagueId)") else {
-            return []
-        }
-        guard
-            let (data, _) = try? await URLSession.shared.data(from: url),
-            let decoded = try? JSONDecoder().decode(SportsDBEventsResponse.self, from: data)
-        else { return [] }
-        let rows = decoded.events ?? []
-        if !rows.isEmpty { return rows }
-
-        return []
-    }
-
-    private func fallbackStandingsFromEvents(_ events: [SportsDBEvent]) -> [LiveStandingRow] {
-        struct Agg {
-            var played = 0
-            var wins = 0
-            var draws = 0
-            var losses = 0
-            var gf = 0
-            var ga = 0
-            var points = 0
-            var form: [Character] = []
-        }
-
-        let sortedEvents = events
-            .filter { Int($0.intHomeScore ?? "") != nil && Int($0.intAwayScore ?? "") != nil }
-            .sorted { parsedEventDate($0) < parsedEventDate($1) }
-
-        var table: [String: Agg] = [:]
-
-        for event in sortedEvents {
-            guard
-                let home = event.strHomeTeam,
-                let away = event.strAwayTeam,
-                let homeScore = Int(event.intHomeScore ?? ""),
-                let awayScore = Int(event.intAwayScore ?? "")
-            else { continue }
-
-            var homeAgg = table[home, default: Agg()]
-            var awayAgg = table[away, default: Agg()]
-
-            homeAgg.played += 1
-            awayAgg.played += 1
-            homeAgg.gf += homeScore
-            homeAgg.ga += awayScore
-            awayAgg.gf += awayScore
-            awayAgg.ga += homeScore
-
-            if homeScore > awayScore {
-                homeAgg.wins += 1
-                homeAgg.points += 3
-                awayAgg.losses += 1
-                homeAgg.form.append("W")
-                awayAgg.form.append("L")
-            } else if homeScore < awayScore {
-                awayAgg.wins += 1
-                awayAgg.points += 3
-                homeAgg.losses += 1
-                homeAgg.form.append("L")
-                awayAgg.form.append("W")
-            } else {
-                homeAgg.draws += 1
-                awayAgg.draws += 1
-                homeAgg.points += 1
-                awayAgg.points += 1
-                homeAgg.form.append("D")
-                awayAgg.form.append("D")
-            }
-
-            table[home] = homeAgg
-            table[away] = awayAgg
-        }
-
-        let sortedTeams = table.map { (name: $0.key, stats: $0.value) }.sorted {
-            if $0.stats.points != $1.stats.points { return $0.stats.points > $1.stats.points }
-            let gd0 = $0.stats.gf - $0.stats.ga
-            let gd1 = $1.stats.gf - $1.stats.ga
-            if gd0 != gd1 { return gd0 > gd1 }
-            return $0.stats.gf > $1.stats.gf
-        }
-
-        return sortedTeams.enumerated().map { index, item in
-            LiveStandingRow(
-                id: "fallback-\(item.name)",
-                rank: index + 1,
-                teamName: item.name,
-                played: item.stats.played,
-                wins: item.stats.wins,
-                draws: item.stats.draws,
-                losses: item.stats.losses,
-                goalsFor: item.stats.gf,
-                goalsAgainst: item.stats.ga,
-                goalDiff: item.stats.gf - item.stats.ga,
-                points: item.stats.points,
-                form: Array(item.stats.form.suffix(5)),
-                badgeURL: nil
-            )
-        }
-    }
-
-    private func fallbackLocalStandings(for league: LiveTopLeague) -> [LiveStandingRow] {
-        let teams: [String]
-        switch league {
-        case .championsLeague:
-            teams = ["ريال مدريد", "مانشستر سيتي", "بايرن ميونخ", "برشلونة", "باريس سان جيرمان", "إنتر ميلان", "أرسنال", "دورتموند"]
-        case .premierLeague:
-            teams = ["ليفربول", "مانشستر سيتي", "أرسنال", "توتنهام", "أستون فيلا", "تشيلسي", "نيوكاسل", "مانشستر يونايتد"]
-        case .laliga:
-            teams = ["ريال مدريد", "برشلونة", "أتلتيكو مدريد", "أتلتيك بلباو", "ريال سوسيداد", "ريال بيتيس", "فياريال", "فالنسيا"]
-        case .serieA:
-            teams = ["إنتر ميلان", "يوفنتوس", "ميلان", "نابولي", "روما", "لاتسيو", "أتلانتا", "فيورنتينا"]
-        case .bundesliga:
-            teams = ["بايرن ميونخ", "ليفركوزن", "دورتموند", "لايبزيغ", "شتوتغارت", "فرانكفورت", "فرايبورغ", "هوفنهايم"]
-        case .ligue1:
-            teams = ["باريس سان جيرمان", "موناكو", "ليل", "مارسيليا", "نيس", "رين", "ليون", "لانس"]
-        }
-
-        return teams.enumerated().map { index, name in
-            let played = 24
-            let wins = max(3, 15 - index)
-            let draws = min(8, index / 2 + 2)
-            let losses = max(0, played - wins - draws)
-            let goalsFor = max(18, 45 - index * 2)
-            let goalsAgainst = 20 + index
-            let points = wins * 3 + draws
-
-            return LiveStandingRow(
-                id: "local-\(league.rawValue)-\(index)",
-                rank: index + 1,
-                teamName: name,
-                played: played,
-                wins: wins,
-                draws: draws,
-                losses: losses,
-                goalsFor: goalsFor,
-                goalsAgainst: goalsAgainst,
-                goalDiff: goalsFor - goalsAgainst,
-                points: points,
-                form: ["W", "W", "D", "L", "W"],
-                badgeURL: nil
-            )
-        }
+        return t(ar: "حدث خطأ أثناء جلب الترتيب.", en: "An error occurred while fetching standings.", hi: "स्टैंडिंग लाते समय त्रुटि हुई।", zh: "获取排名时发生错误。", ku: "هەڵەیەک ڕوویدا لە کاتی هێنانی ڕیزبەندی.")
     }
 
     private func loadLiveStandings(force: Bool) async {
@@ -3958,70 +3989,42 @@ struct ContentView: View {
         if !force && !liveStandings.isEmpty && liveLoadedLeague == selectedLiveLeague { return }
 
         let league = selectedLiveLeague
-        let hasSportsDBKey = configuredSportsDBAPIKey() != nil
+        let changedLeague = liveLoadedLeague != league
+        let previousRows = liveStandings
 
         await MainActor.run {
             liveLoading = true
             liveErrorMessage = ""
-            if liveLoadedLeague != league {
+            if changedLeague {
                 liveStandings = []
             }
         }
 
-        let apiRows = await fetchLiveStandingsRows(league: league)
+        do {
+            let rows = try await standingsService.fetchStandings(for: league)
 
-        let mapped = apiRows.compactMap { row -> LiveStandingRow? in
-            guard
-                let rankText = row.intRank,
-                let rank = Int(rankText),
-                let teamName = row.strTeam
-            else {
-                return nil
+            await MainActor.run {
+                liveStandings = rows
+                liveLastUpdated = Date()
+                liveLoadedLeague = league
+                liveLoading = false
+
+                if rows.isEmpty {
+                    liveErrorMessage = t(ar: "لا توجد بيانات ترتيب متاحة لهذا الدوري حالياً.", en: "No standings available for this league right now.", hi: "इस लीग के लिए अभी कोई स्टैंडिंग उपलब्ध नहीं है।", zh: "当前该联赛暂无排名数据。", ku: "بۆ ئەم لیگە ئێستا هیچ داتای ڕیزبەندییەک بەردەست نییە.")
+                }
             }
+        } catch {
+            let message = localizedStandingsError(error)
+            await MainActor.run {
+                liveLoading = false
+                liveLoadedLeague = league
+                liveErrorMessage = message
 
-            let played = Int(row.intPlayed ?? "") ?? 0
-            let wins = Int(row.intWin ?? "") ?? 0
-            let draws = Int(row.intDraw ?? "") ?? 0
-            let losses = Int(row.intLoss ?? "") ?? 0
-            let goalsFor = Int(row.intGoalsFor ?? "") ?? 0
-            let goalsAgainst = Int(row.intGoalsAgainst ?? "") ?? 0
-            let goalDiff = Int(row.intGoalDifference ?? "") ?? (goalsFor - goalsAgainst)
-            let points = Int(row.intPoints ?? "") ?? 0
-            let formChars = Array((row.strForm ?? "").prefix(5))
-            let badge = row.strTeamBadge ?? row.strBadge
-
-            return LiveStandingRow(
-                id: row.idStanding ?? row.idTeam ?? "\(rank)-\(teamName)",
-                rank: rank,
-                teamName: teamName,
-                played: played,
-                wins: wins,
-                draws: draws,
-                losses: losses,
-                goalsFor: goalsFor,
-                goalsAgainst: goalsAgainst,
-                goalDiff: goalDiff,
-                points: points,
-                form: formChars,
-                badgeURL: badge.flatMap(URL.init(string:))
-            )
-        }
-        .sorted { $0.rank < $1.rank }
-
-        var finalRows = mapped
-        if finalRows.isEmpty && league == .championsLeague {
-            let pastEvents = await fetchPastEvents(league: league)
-            finalRows = fallbackStandingsFromEvents(pastEvents)
-        }
-
-        await MainActor.run {
-            liveStandings = finalRows
-            liveLastUpdated = Date()
-            liveLoadedLeague = league
-            liveLoading = false
-            if finalRows.isEmpty {
-                liveStandings = fallbackLocalStandings(for: league)
-                liveErrorMessage = "عرض مؤقت - سيتم التحديث تلقائيًا عند توفر البيانات المباشرة"
+                if changedLeague {
+                    liveStandings = []
+                } else {
+                    liveStandings = previousRows
+                }
             }
         }
     }
@@ -4560,6 +4563,7 @@ struct ContentView: View {
     private func goBackToMainMenu() {
         stopSimulation(manual: false)
         showCompetitions = false
+        showTodayMatchesScreen = false
         showMatchCenter = false
         showTeamRecord = false
         showTeamManagementScreen = false
@@ -4704,7 +4708,8 @@ struct ContentView: View {
 
         lineup = saved.lineup
         bench = saved.bench
-        selectedLiveLeague = LiveTopLeague(rawValue: saved.selectedLiveLeagueRaw) ?? .premierLeague
+        let restoredLiveLeague = LiveTopLeague(rawValue: saved.selectedLiveLeagueRaw) ?? .premierLeague
+        selectedLiveLeague = LiveTopLeague.allCases.contains(restoredLiveLeague) ? restoredLiveLeague : .premierLeague
         tacticalPlan = TacticalPlan(rawValue: saved.tacticalPlanRaw ?? "") ?? .fourThreeThree
 
         leagueTitlesWon = saved.leagueTitlesWon ?? 0
@@ -11690,285 +11695,3275 @@ private struct FilesPanelView: View {
 private struct SettingsSheetView: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedLanguage: AppLanguage
+    let onOpenClubCenter: () -> Void
 
     private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
         selectedLanguage.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
     }
 
+    private var isRTL: Bool {
+        selectedLanguage.layoutDirection == .rightToLeft
+    }
+
+    private var contentAlignment: Alignment {
+        isRTL ? .trailing : .leading
+    }
+
     var body: some View {
         NavigationStack {
             ZStack {
-                LinearGradient(
-                    colors: [FootballTheme.backgroundPrimary, FootballTheme.backgroundSecondary],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-
-                Circle()
-                    .fill(FootballTheme.accentCyan.opacity(0.16))
-                    .frame(width: 240, height: 240)
-                    .blur(radius: 8)
-                    .offset(x: 120, y: -250)
-
-                Circle()
-                    .fill(FootballTheme.pitchGreen.opacity(0.12))
-                    .frame(width: 220, height: 220)
-                    .blur(radius: 12)
-                    .offset(x: -140, y: 260)
+                settingsBackground
 
                 ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 20) {
-                        HStack {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(t(ar: "الإعدادات", en: "Settings", hi: "सेटिंग्स", zh: "设置", ku: "ڕێکخستن"))
-                                    .font(.system(size: 34, weight: .black, design: .rounded))
-                                    .foregroundStyle(.white)
-                                Text(t(ar: "اختَر اللغة وطالع الإرشادات من شاشة كاملة أنيقة.", en: "Choose the language and open the guide from a polished full-screen panel.", hi: "भाषा चुनें और एक सुंदर पूर्ण-स्क्रीन पैनल से निर्देश खोलें।", zh: "在一个完整且精致的全屏界面中选择语言并打开说明。", ku: "زمان هەڵبژێرە و ڕێنمایییەکان لە شاشەیەکی تەواو و جوان بکەرەوە."))
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.76))
-                            }
-
-                            Spacer()
-
-                            Button {
-                                dismiss()
-                            } label: {
-                                Image(systemName: "xmark")
-                                    .font(.system(size: 17, weight: .black))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(
-                                        Circle()
-                                            .fill(FootballTheme.cardBase.opacity(0.74))
-                                    )
-                                    .overlay(
-                                        Circle()
-                                            .stroke(FootballTheme.cardGlow.opacity(0.30), lineWidth: 1)
-                                    )
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            HStack(spacing: 12) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [FootballTheme.accentCyan, FootballTheme.pitchGreen],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                        .frame(width: 72, height: 72)
-                                    Image(systemName: "gearshape.2.fill")
-                                        .font(.system(size: 28, weight: .black))
-                                        .foregroundStyle(.white)
-                                }
-
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(t(ar: "تخصيص التجربة", en: "Customize the Experience", hi: "अनुभव को अनुकूलित करें", zh: "自定义体验", ku: "ئەزموونەکە تایبەت بکە"))
-                                        .font(.system(size: 23, weight: .black, design: .rounded))
-                                        .foregroundStyle(.white)
-                                    Text(t(ar: "كل تغيير ينعكس مباشرة على واجهة اللعبة.", en: "Every change is applied directly to the game interface.", hi: "हर बदलाव सीधे खेल की स्क्रीन पर लागू होगा।", zh: "每个改动都会立即应用到游戏界面。", ku: "هەموو گۆڕانکارییەک ڕاستەوخۆ لەسەر ڕووکارەکەی یاری دەردەکەوێت."))
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.78))
-                                }
-                            }
-                        }
-                        .padding(18)
-                        .background(
-                            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                                .fill(FootballTheme.cardBase.opacity(0.62))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                                .stroke(FootballTheme.cardGlow.opacity(0.24), lineWidth: 1)
-                        )
-
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text(t(ar: "اختيار اللغة", en: "Choose Language", hi: "भाषा चुनें", zh: "选择语言", ku: "زمان هەڵبژێرە"))
-                                .font(.system(size: 22, weight: .black, design: .rounded))
-                                .foregroundStyle(.white)
-
-                            ForEach(AppLanguage.userSelectableLanguages) { language in
-                                Button {
-                                    selectedLanguage = language
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(language.nativeName)
-                                                .font(.system(size: 19, weight: .bold))
-                                                .foregroundStyle(selectedLanguage == language ? .black : .white)
-                                            Text(
-                                                language.text(
-                                                    ar: "تفعيل كامل للواجهة",
-                                                    en: "Apply to the full interface",
-                                                    hi: "पूरी इंटरफ़ेस पर लागू करें",
-                                                    zh: "应用到整个界面",
-                                                    ku: "بۆ تەواوی ڕووکارەکە جێبەجێ بکە"
-                                                )
-                                            )
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(selectedLanguage == language ? Color.black.opacity(0.65) : .white.opacity(0.68))
-                                        }
-
-                                        Spacer()
-
-                                        Image(systemName: selectedLanguage == language ? "checkmark.circle.fill" : "circle")
-                                            .font(.system(size: 20, weight: .bold))
-                                            .foregroundStyle(selectedLanguage == language ? Color.black : .white.opacity(0.75))
-                                    }
-                                    .padding(16)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                            .fill(
-                                                selectedLanguage == language
-                                                ? LinearGradient(
-                                                    colors: [FootballTheme.accentGreen, FootballTheme.accentCyan],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                                : LinearGradient(
-                                                    colors: [FootballTheme.cardBase.opacity(0.72), FootballTheme.backgroundSecondary.opacity(0.56)],
-                                                    startPoint: .topLeading,
-                                                    endPoint: .bottomTrailing
-                                                )
-                                            )
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                            .stroke(selectedLanguage == language ? Color.white.opacity(0.35) : Color.white.opacity(0.10), lineWidth: 1)
-                                    )
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(18)
-                        .background(
-                            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                                .fill(FootballTheme.backgroundPrimary.opacity(0.42))
-                        )
-
-                        NavigationLink {
-                            GuideView(language: selectedLanguage)
-                        } label: {
-                            HStack(spacing: 14) {
-                                ZStack {
-                                    Circle()
-                                        .fill(FootballTheme.cardBase.opacity(0.74))
-                                        .frame(width: 48, height: 48)
-                                    Image(systemName: "book.fill")
-                                        .font(.system(size: 20, weight: .black))
-                                        .foregroundStyle(.white)
-                                }
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(t(ar: "الإرشادات", en: "Instructions", hi: "निर्देश", zh: "说明", ku: "ڕێنمایی"))
-                                        .font(.system(size: 19, weight: .black))
-                                        .foregroundStyle(.white)
-                                    Text(t(ar: "افتح شاشة التعريف باللعبة وفائدتها.", en: "Open the game guide and value overview.", hi: "खेल की जानकारी और उसके लाभ देखें।", zh: "打开游戏介绍与价值说明。", ku: "شاشەی ناساندنی یاری و سوودەکانی بکەرەوە."))
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.78))
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.forward")
-                                    .font(.system(size: 18, weight: .black))
-                                    .foregroundStyle(.white.opacity(0.9))
-                            }
-                            .padding(18)
-                            .background(
-                                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [FootballTheme.accentCyan, FootballTheme.pitchGreen],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                            )
-                            .shadow(color: FootballTheme.accentCyan.opacity(0.22), radius: 16, x: 0, y: 10)
-                        }
-                        .buttonStyle(.plain)
-
-                        NavigationLink {
-                            LegalCenterView(language: selectedLanguage)
-                        } label: {
-                            HStack(spacing: 14) {
-                                ZStack {
-                                    Circle()
-                                        .fill(FootballTheme.cardBase.opacity(0.74))
-                                        .frame(width: 48, height: 48)
-                                    Image(systemName: "checkmark.shield.fill")
-                                        .font(.system(size: 20, weight: .black))
-                                        .foregroundStyle(.white)
-                                }
-
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text(t(ar: "القانون والخصوصية", en: "Legal & Privacy", hi: "कानूनी और गोपनीयता", zh: "法律与隐私", ku: "یاسا و نهێنی"))
-                                        .font(.system(size: 19, weight: .black))
-                                        .foregroundStyle(.white)
-                                    Text(t(ar: "سياسة الخصوصية، الدعم، وإخلاء المسؤولية.", en: "Privacy policy, support, and disclaimer.", hi: "गोपनीयता नीति, सपोर्ट और अस्वीकरण।", zh: "隐私政策、支持与免责声明。", ku: "سیاسەتی نهێنی، پشتگیری و ڕەتکردنەوەی بەرپرسیارێتی."))
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(.white.opacity(0.78))
-                                }
-
-                                Spacer()
-
-                                Image(systemName: "chevron.forward")
-                                    .font(.system(size: 18, weight: .black))
-                                    .foregroundStyle(.white.opacity(0.9))
-                            }
-                            .padding(18)
-                            .background(
-                                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [FootballTheme.cardBase.opacity(0.86), FootballTheme.backgroundSecondary.opacity(0.78)],
-                                            startPoint: .topLeading,
-                                            endPoint: .bottomTrailing
-                                        )
-                                    )
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                    .stroke(FootballTheme.cardGlow.opacity(0.22), lineWidth: 1)
-                            )
-                            .shadow(color: FootballTheme.cardGlow.opacity(0.14), radius: 14, x: 0, y: 9)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            dismiss()
-                        } label: {
-                            Text(t(ar: "تم", en: "Done", hi: "पूर्ण", zh: "完成", ku: "تەواو"))
-                                .font(.system(size: 19, weight: .black, design: .rounded))
-                                .foregroundStyle(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                        .fill(FootballTheme.cardBase.opacity(0.68))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                        .stroke(FootballTheme.cardGlow.opacity(0.22), lineWidth: 1)
-                                )
-                        }
-                        .buttonStyle(.plain)
+                    VStack(spacing: 16) {
+                        settingsHeader
+                        customizationCard
+                        clubCenterRow
+                        languagePickerCard
+                        guideButton
+                        legalPrivacyFooterCard
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 24)
-                    .padding(.bottom, 30)
+                    .padding(.horizontal, 17)
+                    .padding(.top, 18)
+                    .padding(.bottom, 24)
                 }
             }
         }
         .environment(\.layoutDirection, selectedLanguage.layoutDirection)
         .toolbar(.hidden, for: .navigationBar)
     }
+
+    private var clubCenterRow: some View {
+        Button {
+            dismiss()
+            onOpenClubCenter()
+        } label: {
+            HStack(spacing: 12) {
+                if isRTL {
+                    clubCenterChevron
+                    Spacer(minLength: 8)
+                    clubCenterText(alignment: .trailing)
+                    clubCenterIcon
+                } else {
+                    clubCenterIcon
+                    clubCenterText(alignment: .leading)
+                    Spacer(minLength: 8)
+                    clubCenterChevron
+                }
+            }
+            .padding(.horizontal, 15)
+            .padding(.vertical, 13)
+            .frame(minHeight: 74)
+            .background(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x2E1C60).opacity(0.93), Color(hex: 0x203C7A).opacity(0.89)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(Color(hex: 0x9E7DE7).opacity(0.38), lineWidth: 1)
+                    )
+            )
+            .shadow(color: Color(hex: 0x6A54B6).opacity(0.20), radius: 10, x: 0, y: 5)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func clubCenterText(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 3) {
+            Text(t(ar: "مركز الأندية", en: "Clubs Center", hi: "क्लब सेंटर", zh: "俱乐部中心", ku: "ناوەندی یانەکان"))
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+
+            Text(t(ar: "إدارة بيانات الأندية والمحتوى", en: "Manage clubs data and content", hi: "क्लब डेटा और सामग्री प्रबंधित करें", zh: "管理俱乐部数据与内容", ku: "بەڕێوەبردنی داتای یانەکان و ناوەڕۆک"))
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+    }
+
+    private var clubCenterIcon: some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0xFFE38A), Color(hex: 0xD99A1D)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Circle()
+                .stroke(Color.white.opacity(0.40), lineWidth: 1)
+
+            Image(systemName: "shippingbox.fill")
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(.black.opacity(0.82))
+        }
+        .frame(width: 36, height: 36)
+    }
+
+    private var clubCenterChevron: some View {
+        Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+            .font(.system(size: 13, weight: .black))
+            .foregroundStyle(.white.opacity(0.84))
+            .frame(width: 20, height: 20)
+    }
+
+    private var settingsBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: 0x11062D), Color(hex: 0x0C1A45), Color(hex: 0x083167)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Circle()
+                .fill(Color(hex: 0x52D3FF).opacity(0.30))
+                .frame(width: 360, height: 360)
+                .blur(radius: 128)
+                .offset(x: -172, y: -240)
+
+            Circle()
+                .fill(Color(hex: 0x4A91FF).opacity(0.22))
+                .frame(width: 340, height: 340)
+                .blur(radius: 126)
+                .offset(x: 178, y: 320)
+
+            Circle()
+                .fill(Color(hex: 0x9D65FF).opacity(0.14))
+                .frame(width: 280, height: 280)
+                .blur(radius: 120)
+                .offset(x: isRTL ? -146 : 146, y: -10)
+
+            LinearGradient(
+                colors: [Color.white.opacity(0.06), .clear, Color.black.opacity(0.20)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .blendMode(.softLight)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var closeButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(Color(hex: 0x2A174C).opacity(0.72))
+                Circle()
+                    .fill(.ultraThinMaterial.opacity(0.18))
+                Circle()
+                    .stroke(Color(hex: 0x8A73D4).opacity(0.52), lineWidth: 0.9)
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+            }
+            .frame(width: 36, height: 36)
+            .shadow(color: Color(hex: 0x6D5AB8).opacity(0.26), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var settingsHeader: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 7) {
+            Text(t(ar: "الإعدادات", en: "Settings", hi: "सेटिंग्स", zh: "设置", ku: "ڕێکخستن"))
+                .font(.system(size: 41, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.74)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: contentAlignment)
+
+            Text(
+                t(
+                    ar: "اختر اللغة وطالع الإرشادات من شاشة كاملة أنيقة.",
+                    en: "Choose language and open instructions from a polished full-screen panel.",
+                    hi: "भाषा चुनें और सुंदर पूर्ण-स्क्रीन पैनल से निर्देश खोलें।",
+                    zh: "在精致的全屏面板中选择语言并打开说明。",
+                    ku: "زمان هەڵبژێرە و ڕێنمایییەکان لە شاشەیەکی تەواو و جوان بکەرەوە."
+                )
+            )
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.76))
+            .lineSpacing(1.2)
+            .multilineTextAlignment(isRTL ? .trailing : .leading)
+            .frame(maxWidth: .infinity, alignment: contentAlignment)
+        }
+        .padding(.top, 4)
+        .padding(isRTL ? .leading : .trailing, 44)
+        .overlay(alignment: isRTL ? .topLeading : .topTrailing) {
+            closeButton
+        }
+    }
+
+    private var customizationCard: some View {
+        HStack(spacing: 12) {
+            if isRTL {
+                customizationTextBlock(isTrailing: true)
+                customizationIcon
+            } else {
+                customizationIcon
+                customizationTextBlock(isTrailing: false)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x2C1C5D).opacity(0.94), Color(hex: 0x1F326A).opacity(0.90)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.08), .clear, Color.black.opacity(0.14)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(hex: 0xA985FF).opacity(0.52), Color.white.opacity(0.10)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+        .shadow(color: Color(hex: 0x715DB6).opacity(0.24), radius: 12, x: 0, y: 6)
+    }
+
+    private func customizationTextBlock(isTrailing: Bool) -> some View {
+        VStack(alignment: isTrailing ? .trailing : .leading, spacing: 4) {
+            Text(t(ar: "تخصيص التجربة", en: "Customize Experience", hi: "अनुभव अनुकूलन", zh: "自定义体验", ku: "تایبەتمەندی ئەزموون"))
+                .font(.system(size: 22, weight: .black, design: .rounded))
+                .minimumScaleFactor(0.75)
+                .lineLimit(1)
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: isTrailing ? .trailing : .leading)
+
+            Text(
+                t(
+                    ar: "كل تغيير ينعكس مباشرة على واجهة اللعبة.",
+                    en: "Every change instantly affects the game interface.",
+                    hi: "हर बदलाव सीधे गेम इंटरफेस पर लागू होता है।",
+                    zh: "每个改动都会立即应用到游戏界面。",
+                    ku: "هەموو گۆڕانکارییەک ڕاستەوخۆ لەسەر ڕووکارەکەی یاری دەردەکەوێت."
+                )
+            )
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.74))
+            .lineLimit(2)
+            .multilineTextAlignment(isTrailing ? .trailing : .leading)
+            .frame(maxWidth: .infinity, alignment: isTrailing ? .trailing : .leading)
+        }
+    }
+
+    private var customizationIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x77F2D0), Color(hex: 0x67E5FF), Color(hex: 0xC2F66C)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .stroke(Color.white.opacity(0.34), lineWidth: 0.9)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 17, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.18), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 20, weight: .black))
+                .foregroundStyle(Color.black.opacity(0.76))
+        }
+        .frame(width: 58, height: 58)
+        .shadow(color: Color(hex: 0x7FF0D2).opacity(0.35), radius: 10, x: 0, y: 5)
+    }
+
+    private var languagePickerCard: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 12) {
+            Text(t(ar: "اختيار اللغة", en: "Language", hi: "भाषा चयन", zh: "语言选择", ku: "هەڵبژاردنی زمان"))
+                .font(.system(size: 34, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .minimumScaleFactor(0.72)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: contentAlignment)
+
+            ForEach(AppLanguage.userSelectableLanguages) { language in
+                languageRow(for: language)
+            }
+        }
+        .padding(15)
+        .background(
+            RoundedRectangle(cornerRadius: 30, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x1A123F).opacity(0.93), Color(hex: 0x162A5A).opacity(0.90)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.07), .clear, Color.black.opacity(0.14)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 30, style: .continuous)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color(hex: 0x8E73DC).opacity(0.44), Color.white.opacity(0.12)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1
+                        )
+                )
+        )
+        .shadow(color: Color(hex: 0x4E3E86).opacity(0.22), radius: 12, x: 0, y: 6)
+    }
+
+    private func languageRow(for language: AppLanguage) -> some View {
+        let isSelected = selectedLanguage == language
+
+        return Button {
+            selectedLanguage = language
+        } label: {
+            HStack(spacing: 10) {
+                if isRTL {
+                    languageSelectionIndicator(isSelected: isSelected)
+                    Spacer(minLength: 8)
+                    languageTextBlock(for: language, isSelected: isSelected, isTrailing: true)
+                } else {
+                    languageTextBlock(for: language, isSelected: isSelected, isTrailing: false)
+                    Spacer(minLength: 8)
+                    languageSelectionIndicator(isSelected: isSelected)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .frame(minHeight: 74)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 23, style: .continuous)
+                    .fill(
+                        isSelected
+                        ? LinearGradient(
+                            colors: [Color(hex: 0x7CF3D7), Color(hex: 0x68E4FF), Color(hex: 0xC6F56B)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        : LinearGradient(
+                            colors: [Color(hex: 0x342066).opacity(0.94), Color(hex: 0x244082).opacity(0.90)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 23, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.12), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 23, style: .continuous)
+                    .stroke(
+                        isSelected ? Color.white.opacity(0.34) : Color.white.opacity(0.14),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(
+                color: isSelected ? Color(hex: 0x74E6DA).opacity(0.34) : Color.black.opacity(0.12),
+                radius: isSelected ? 12 : 5,
+                x: 0,
+                y: isSelected ? 7 : 3
+            )
+            .animation(.easeInOut(duration: 0.20), value: isSelected)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func languageTextBlock(for language: AppLanguage, isSelected: Bool, isTrailing: Bool) -> some View {
+        VStack(alignment: isTrailing ? .trailing : .leading, spacing: 2) {
+            Text(language.nativeName)
+                .font(.system(size: 27, weight: .black, design: .rounded))
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+                .foregroundStyle(isSelected ? Color(hex: 0x162742) : .white.opacity(0.98))
+                .frame(maxWidth: .infinity, alignment: isTrailing ? .trailing : .leading)
+
+            Text(interfaceSubtitle(for: language))
+                .font(.system(size: 11, weight: .semibold))
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+                .foregroundStyle(isSelected ? Color(hex: 0x20375A).opacity(0.78) : .white.opacity(0.66))
+                .frame(maxWidth: .infinity, alignment: isTrailing ? .trailing : .leading)
+        }
+    }
+
+    private func languageSelectionIndicator(isSelected: Bool) -> some View {
+        ZStack {
+            Circle()
+                .fill(isSelected ? Color.white.opacity(0.98) : Color.white.opacity(0.08))
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(isSelected ? 0.90 : 0.66), lineWidth: 1.8)
+                )
+                .frame(width: 24, height: 24)
+
+            if isSelected {
+                Circle()
+                    .fill(Color.black.opacity(0.84))
+                    .frame(width: 14, height: 14)
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white)
+            }
+        }
+    }
+
+    private func interfaceSubtitle(for language: AppLanguage) -> String {
+        language.text(
+            ar: "تفعيل كامل للواجهة",
+            en: "Apply to the full interface",
+            hi: "पूरी इंटरफेस पर लागू करें",
+            zh: "应用到整个界面",
+            ku: "بۆ تەواوی ڕووکارەکە جێبەجێ بکە"
+        )
+    }
+
+    private var guideButton: some View {
+        NavigationLink {
+            GuideView(language: selectedLanguage)
+        } label: {
+            HStack(spacing: 12) {
+                if isRTL {
+                    guideTrailingIcon
+
+                    Spacer(minLength: 10)
+
+                    Text(t(ar: "الإرشادات", en: "Instructions", hi: "निर्देश", zh: "说明", ku: "ڕێنمایی"))
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .minimumScaleFactor(0.82)
+                        .lineLimit(1)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                } else {
+                    Text(t(ar: "الإرشادات", en: "Instructions", hi: "निर्देश", zh: "说明", ku: "ڕێنمایی"))
+                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .minimumScaleFactor(0.82)
+                        .lineLimit(1)
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Spacer(minLength: 10)
+
+                    guideTrailingIcon
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(minHeight: 80)
+            .background(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x75F0D2), Color(hex: 0x68E4FF), Color(hex: 0xB9F563)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 26, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.22), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(Color.white.opacity(0.30), lineWidth: 1)
+            )
+            .shadow(color: Color(hex: 0x73F1D3).opacity(0.34), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var guideTrailingIcon: some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: 0x273353).opacity(0.96))
+            Circle()
+                .stroke(Color.white.opacity(0.28), lineWidth: 0.9)
+
+            Image(systemName: "book.fill")
+                .font(.system(size: 15, weight: .black))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 40, height: 40)
+        .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 3)
+    }
+
+    private var legalPrivacyFooterCard: some View {
+        NavigationLink {
+            LegalCenterView(language: selectedLanguage)
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: isRTL ? "chevron.left" : "chevron.right")
+                    .font(.system(size: 15, weight: .black))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: isRTL ? .trailing : .leading, spacing: 4) {
+                    Text(
+                        t(
+                            ar: "القانون والخصوصية",
+                            en: "Legal & Privacy",
+                            hi: "कानूनी और गोपनीयता",
+                            zh: "法律与隐私",
+                            ku: "یاسا و نهێنی"
+                        )
+                    )
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+                    Text(
+                        t(
+                            ar: "سياسة الخصوصية، الدعم، وإخلاء المسؤولية.",
+                            en: "Privacy policy, support, and disclaimer.",
+                            hi: "गोपनीयता नीति, सपोर्ट और अस्वीकरण।",
+                            zh: "隐私政策、支持与免责声明。",
+                            ku: "سیاسەتی نهێنی، پشتگیری و ڕەتکردنەوەی بەرپرسیارێتی."
+                        )
+                    )
+                    .font(.system(size: 12, weight: .semibold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.76)
+                    .foregroundStyle(.white.opacity(0.76))
+                    .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+                }
+
+                legalFooterShieldIcon
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 15)
+            .frame(minHeight: 92)
+            .background(
+                RoundedRectangle(cornerRadius: 29, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x2A1A5E), Color(hex: 0x214184), Color(hex: 0x2761AB)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 29, style: .continuous)
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.14), .clear, Color.black.opacity(0.16)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 29, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color(hex: 0xA584FF).opacity(0.52), Color.white.opacity(0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: Color(hex: 0x6A56B8).opacity(0.24), radius: 12, x: 0, y: 6)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var legalFooterShieldIcon: some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: 0x2B1A52).opacity(0.96))
+            Circle()
+                .stroke(Color(hex: 0x9A82E7).opacity(0.42), lineWidth: 0.9)
+
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 16, weight: .black))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 42, height: 42)
+        .shadow(color: .black.opacity(0.18), radius: 5, x: 0, y: 3)
+    }
+}
+
+private struct TodayMatchesScreen: View {
+    @Environment(\.dismiss) private var dismiss
+    let language: AppLanguage
+    @StateObject private var viewModel: MatchesViewModel
+
+    init(language: AppLanguage) {
+        self.language = language
+        _viewModel = StateObject(wrappedValue: MatchesViewModel())
+    }
+
+    private var isRTL: Bool {
+        language.layoutDirection == .rightToLeft
+    }
+
+    private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+        language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                matchesBackground
+
+                VStack(spacing: 10) {
+                    topBar
+                    matchesContent
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(for: Int.self) { matchId in
+                MatchDetailsView(matchId: matchId, language: language)
+            }
+        }
+        .environment(\.layoutDirection, language.layoutDirection)
+        .task {
+            await viewModel.loadMatches(forceRefresh: false)
+        }
+    }
+
+    private var matchesBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: 0x12052C), Color(hex: 0x0B1A48), Color(hex: 0x05336D)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Circle()
+                .fill(Color(hex: 0x59D8FF).opacity(0.24))
+                .frame(width: 360, height: 360)
+                .blur(radius: 132)
+                .offset(x: -170, y: -240)
+
+            Circle()
+                .fill(Color(hex: 0x4F8FFF).opacity(0.20))
+                .frame(width: 330, height: 330)
+                .blur(radius: 124)
+                .offset(x: 180, y: 320)
+
+            Circle()
+                .fill(Color(hex: 0xA55FFF).opacity(0.12))
+                .frame(width: 300, height: 300)
+                .blur(radius: 128)
+                .offset(x: isRTL ? -130 : 130, y: -20)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var topBar: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 4) {
+            Text(t(ar: "مباريات اليوم", en: "Today Matches", hi: "आज के मैच", zh: "今日比赛", ku: "یارییەکانی ئەمڕۆ"))
+                .font(.system(size: 34, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+            Text(t(ar: "مباشر، اليوم، وأهم المواجهات", en: "Live, today, and top fixtures", hi: "लाइव, आज और मुख्य मुकाबले", zh: "直播、今日与焦点对决", ku: "ڕاستەوخۆ، ئەمڕۆ و گرنگترین پێکدادان"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.76))
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+        }
+        .padding(.top, 2)
+        .padding(isRTL ? .leading : .trailing, 48)
+        .padding(isRTL ? .trailing : .leading, 48)
+        .overlay(alignment: isRTL ? .topTrailing : .topLeading) {
+            topIconButton(symbol: isRTL ? "chevron.right" : "chevron.left") {
+                dismiss()
+            }
+        }
+        .overlay(alignment: isRTL ? .topLeading : .topTrailing) {
+            Button {
+                viewModel.retry()
+            } label: {
+                if viewModel.isLoading {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: 0x2A1850).opacity(0.84))
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.78)
+                    }
+                    .frame(width: 34, height: 34)
+                } else {
+                    topIconButtonLabel(symbol: "arrow.clockwise")
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func topIconButton(symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            topIconButtonLabel(symbol: symbol)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func topIconButtonLabel(symbol: String) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: 0x2A1850).opacity(0.84))
+            Circle()
+                .stroke(Color(hex: 0x8A73D4).opacity(0.44), lineWidth: 0.9)
+
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .frame(width: 34, height: 34)
+        .shadow(color: Color(hex: 0x6E58B8).opacity(0.24), radius: 8, x: 0, y: 4)
+    }
+
+    private func localizedLeagueName(_ leagueID: Int, fallback: String) -> String {
+        switch leagueID {
+        case 39:
+            return t(ar: "الدوري الإنجليزي", en: "Premier League", hi: "प्रीमियर लीग", zh: "英超", ku: "پریمیەر لیگ")
+        case 140:
+            return t(ar: "الدوري الإسباني", en: "La Liga", hi: "ला लीगा", zh: "西甲", ku: "لا لیگا")
+        case 135:
+            return t(ar: "الدوري الإيطالي", en: "Serie A", hi: "सीरी ए", zh: "意甲", ku: "سێری ئا")
+        case 78:
+            return t(ar: "الدوري الألماني", en: "Bundesliga", hi: "बुंडेसलीगा", zh: "德甲", ku: "بوندسلیگا")
+        case 61:
+            return t(ar: "الدوري الفرنسي", en: "Ligue 1", hi: "लीग 1", zh: "法甲", ku: "لیگ ١")
+        case 307:
+            return t(ar: "الدوري السعودي", en: "Saudi Pro League", hi: "सऊदी प्रो लीग", zh: "沙特职业联赛", ku: "لیگی سعودی")
+        default:
+            return localizedDisplayName(fallback, in: language)
+        }
+    }
+
+    private func localizedLeagueName(for match: MatchDisplayModel) -> String {
+        guard let leagueID = match.leagueID else {
+            return localizedDisplayName(match.leagueName, in: language)
+        }
+        return localizedLeagueName(leagueID, fallback: match.leagueName)
+    }
+
+    @ViewBuilder
+    private var matchesContent: some View {
+        if viewModel.isLoading && viewModel.liveMatches.isEmpty && viewModel.otherMatches.isEmpty {
+            loadingState
+        } else if let message = viewModel.errorMessage,
+                  viewModel.liveMatches.isEmpty && viewModel.otherMatches.isEmpty {
+            errorState(message: message)
+        } else if viewModel.isEmpty {
+            emptyState
+        } else {
+            matchesList
+        }
+    }
+
+    private var loadingState: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.88)
+
+                    Text(t(ar: "جاري تحميل مباريات البطولات المحددة...", en: "Loading selected league matches...", hi: "चयनित लीग मैच लोड हो रहे हैं...", zh: "正在加载指定联赛比赛...", ku: "یارییەکانی لیگە دیاریکراوەکان بار دەکرێن..."))
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.78))
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 3)
+                .padding(.top, 6)
+
+                ForEach(0..<4, id: \.self) { _ in
+                    loadingSkeletonCard
+                }
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 14)
+        }
+        .refreshable {
+            await viewModel.loadMatches(forceRefresh: true)
+        }
+    }
+
+    private func errorState(message: String) -> some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 10) {
+                Spacer(minLength: 16)
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 26, weight: .black))
+                    .foregroundStyle(Color(hex: 0xFF7E89))
+                Text(t(ar: "تعذر تحميل المباريات", en: "Failed to load matches", hi: "मैच लोड नहीं हो सके", zh: "无法加载比赛", ku: "بارکردنی یارییەکان شکستی هێنا"))
+                    .font(.system(size: 18, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                Text(message)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.72))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                Button {
+                    viewModel.retry()
+                } label: {
+                    Text(t(ar: "إعادة المحاولة", en: "Try Again", hi: "फिर प्रयास करें", zh: "重试", ku: "دووبارە هەوڵبدە"))
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 9)
+                        .background(
+                            Capsule()
+                                .fill(
+                                    LinearGradient(
+                                        colors: [Color(hex: 0x2E1E63), Color(hex: 0x224083)],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 16)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 10)
+        }
+        .refreshable {
+            await viewModel.loadMatches(forceRefresh: true)
+        }
+    }
+
+    private var emptyState: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 10) {
+                Spacer(minLength: 18)
+                Image(systemName: "calendar.badge.exclamationmark")
+                    .font(.system(size: 30, weight: .black))
+                    .foregroundStyle(Color(hex: 0x7FB7FF))
+
+                Text(t(
+                    ar: "لا توجد مباريات اليوم في البطولات المحددة",
+                    en: "No matches today in the selected leagues",
+                    hi: "चयनित लीगों में आज कोई मैच नहीं",
+                    zh: "指定联赛今天没有比赛",
+                    ku: "ئەمڕۆ لە لیگە دیاریکراوەکان هیچ یارییەک نییە"
+                ))
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+
+                Text(t(
+                    ar: "اسحب للأسفل للتحديث",
+                    en: "Pull down to refresh",
+                    hi: "रीफ़्रेश करने के लिए नीचे खींचें",
+                    zh: "下拉即可刷新",
+                    ku: "بۆ نوێکردنەوە بەرەوخوار ڕابکێشە"
+                ))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.70))
+
+                Spacer(minLength: 18)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 10)
+        }
+        .refreshable {
+            await viewModel.loadMatches(forceRefresh: true)
+        }
+    }
+
+    private var matchesList: some View {
+        let orderedMatches = viewModel.liveMatches + viewModel.otherMatches
+
+        return ScrollView(showsIndicators: false) {
+            LazyVStack(spacing: 12) {
+                ForEach(orderedMatches) { match in
+                    NavigationLink(value: match.id) {
+                        matchCard(match)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 10)
+        }
+        .refreshable {
+            await viewModel.loadMatches(forceRefresh: true)
+        }
+    }
+
+    private var loadingSkeletonCard: some View {
+        RoundedRectangle(cornerRadius: 24, style: .continuous)
+            .fill(Color.white.opacity(0.10))
+            .frame(height: 128)
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            )
+            .redacted(reason: .placeholder)
+    }
+
+    private func matchCard(_ match: MatchDisplayModel) -> some View {
+        VStack(spacing: 10) {
+            leagueRow(for: match)
+            teamsRow(for: match)
+            detailsRow(for: match)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .background(
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x291A5D).opacity(0.94), Color(hex: 0x1E356F).opacity(0.90)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.10), .clear, Color.black.opacity(0.15)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .stroke(Color.white.opacity(0.14), lineWidth: 0.9)
+                )
+        )
+        .shadow(color: .black.opacity(0.16), radius: 10, x: 0, y: 6)
+    }
+
+    private func leagueRow(for match: MatchDisplayModel) -> some View {
+        HStack(spacing: 8) {
+            statusChip(for: match)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 6) {
+                Text(localizedLeagueName(for: match))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                leagueBadgeView(
+                    url: match.leagueFlagURL ?? match.leagueLogoURL,
+                    fallbackText: String(match.leagueName.prefix(1)).uppercased()
+                )
+            }
+            .font(.system(size: 11, weight: .black))
+            .foregroundStyle(.white.opacity(0.86))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.10))
+            )
+        }
+    }
+
+    private func teamsRow(for match: MatchDisplayModel) -> some View {
+        let viewData = fixedCardViewData(for: match)
+
+        return HStack(spacing: 8) {
+            teamColumn(name: viewData.leadingTeam.name, logoURL: viewData.leadingTeam.logoURL)
+            centerScoreColumn(for: match, leftScore: viewData.leadingScore, rightScore: viewData.trailingScore)
+            teamColumn(name: viewData.trailingTeam.name, logoURL: viewData.trailingTeam.logoURL)
+        }
+        .environment(\.layoutDirection, .leftToRight)
+    }
+
+    private func teamColumn(name: String, logoURL: URL?) -> some View {
+        VStack(spacing: 6) {
+            teamLogoView(name: name, logoURL: logoURL)
+            Text(name)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.70)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func teamLogoView(name: String, logoURL: URL?) -> some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x385395), Color(hex: 0x253767)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Circle()
+                .stroke(Color.white.opacity(0.24), lineWidth: 0.9)
+
+            if let logoURL {
+                CachedRemoteImage(url: logoURL, contentMode: .fill) {
+                    Text(teamInitials(name))
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white.opacity(0.92))
+                }
+                .frame(width: 34, height: 34)
+                .clipShape(Circle())
+            } else {
+                Text(teamInitials(name))
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+            }
+        }
+        .frame(width: 38, height: 38)
+    }
+
+    private func centerScoreColumn(for match: MatchDisplayModel, leftScore: String, rightScore: String) -> some View {
+        VStack(spacing: 5) {
+            if match.isLive || match.isFinished {
+                HStack(spacing: 5) {
+                    Text(leftScore)
+                    Text("-")
+                    Text(rightScore)
+                }
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+                .environment(\.layoutDirection, .leftToRight)
+            } else {
+                Text(match.kickoffLocalText)
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+            }
+
+            if let minuteText = match.minuteText {
+                Text(minuteText)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(Color(hex: 0xFF9F7D))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color(hex: 0x4A241E).opacity(0.88))
+                    )
+            }
+        }
+        .frame(minWidth: 82)
+    }
+
+    private func fixedCardViewData(for match: MatchDisplayModel) -> MatchCardViewData {
+        let leadingHomeTeam = MatchTeamVisualSlot(
+            name: match.homeTeamName,
+            logoURL: match.homeTeamLogoURL,
+            score: match.homeScore
+        )
+        let trailingAwayTeam = MatchTeamVisualSlot(
+            name: match.awayTeamName,
+            logoURL: match.awayTeamLogoURL,
+            score: match.awayScore
+        )
+
+        #if DEBUG
+        assert(
+            leadingHomeTeam.name == match.homeTeamName && leadingHomeTeam.score == match.homeScore,
+            "Home team must always stay in the first visual slot."
+        )
+        assert(
+            trailingAwayTeam.name == match.awayTeamName && trailingAwayTeam.score == match.awayScore,
+            "Away team must always stay in the second visual slot."
+        )
+        #endif
+
+        return MatchCardViewData(
+            leadingTeam: leadingHomeTeam,
+            trailingTeam: trailingAwayTeam,
+            leadingScore: leadingHomeTeam.score,
+            trailingScore: trailingAwayTeam.score
+        )
+    }
+
+    private func detailsRow(for match: MatchDisplayModel) -> some View {
+        HStack(spacing: 8) {
+            if !match.venueName.isEmpty, match.venueName != "--" {
+                Label {
+                    Text(match.venueName)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.70)
+                } icon: {
+                    Image(systemName: "mappin.and.ellipse")
+                }
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.64))
+            }
+
+            Spacer(minLength: 0)
+
+            Label {
+                Text(match.kickoffLocalText)
+            } icon: {
+                Image(systemName: "clock")
+            }
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(Color(hex: 0x84CFFF))
+        }
+    }
+
+    private func statusChip(for match: MatchDisplayModel) -> some View {
+        let style = statusStyle(for: match)
+
+        return Text(style.label)
+            .font(.system(size: 10, weight: .black))
+            .foregroundStyle(style.tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(style.background.opacity(0.92))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(style.tint.opacity(0.50), lineWidth: 0.9)
+            )
+    }
+
+    private func statusStyle(for match: MatchDisplayModel) -> (label: String, tint: Color, background: Color) {
+        if match.isLive {
+            return (
+                "LIVE",
+                Color(hex: 0xFF5A57),
+                Color(hex: 0x451616)
+            )
+        }
+
+        if match.isFinished {
+            return (
+                t(ar: "انتهت", en: "Finished", hi: "समाप्त", zh: "已结束", ku: "تەواو بوو"),
+                Color(hex: 0x9AA4FF),
+                Color(hex: 0x232A56)
+            )
+        }
+
+        return (
+            t(ar: "لم تبدأ", en: "Not Started", hi: "शुरू नहीं", zh: "未开始", ku: "دەست پێ نەکردووە"),
+            Color(hex: 0x82D0FF),
+            Color(hex: 0x17355B)
+        )
+    }
+
+    private func teamInitials(_ name: String) -> String {
+        let words = name.split(separator: " ")
+        if let first = words.first, let second = words.dropFirst().first {
+            return "\(first.prefix(1))\(second.prefix(1))".uppercased()
+        }
+        return String(words.first?.prefix(2) ?? "TM").uppercased()
+    }
+
+    private func leagueBadgeView(url: URL?, fallbackText: String) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 16, height: 16)
+
+            if let url {
+                CachedRemoteImage(url: url, contentMode: .fill) {
+                    Text(fallbackText)
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                .frame(width: 14, height: 14)
+                .clipShape(Circle())
+            } else {
+                Text(fallbackText)
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        }
+    }
+}
+private struct TeamDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let club: TopFiveClubItem
+    let language: AppLanguage
+
+    @StateObject private var viewModel: TeamDetailsViewModel
+
+    init(club: TopFiveClubItem, language: AppLanguage) {
+        self.club = club
+        self.language = language
+        _viewModel = StateObject(wrappedValue: TeamDetailsViewModel(club: club))
+    }
+
+    private var isRTL: Bool {
+        language.layoutDirection == .rightToLeft
+    }
+
+    private func t(ar: String, en: String, hi: String, zh: String, ku: String) -> String {
+        language.text(ar: ar, en: en, hi: hi, zh: zh, ku: ku)
+    }
+
+    private var hasCoreOverview: Bool {
+        !viewModel.overview.teamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        ZStack {
+            background
+
+            VStack(spacing: 12) {
+                topBar
+                contentState
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .environment(\.layoutDirection, language.layoutDirection)
+        .task(id: club.id) {
+            await viewModel.fetchDetails()
+        }
+    }
+
+    private var background: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: 0x10042A), Color(hex: 0x0A204A), Color(hex: 0x083A75)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Circle()
+                .fill(Color(hex: 0x58CCFF).opacity(0.23))
+                .frame(width: 340, height: 340)
+                .blur(radius: 124)
+                .offset(x: -170, y: -240)
+
+            Circle()
+                .fill(Color(hex: 0x498BFF).opacity(0.20))
+                .frame(width: 310, height: 310)
+                .blur(radius: 122)
+                .offset(x: 170, y: 280)
+
+            Circle()
+                .fill(Color(hex: 0xA869FF).opacity(0.12))
+                .frame(width: 286, height: 286)
+                .blur(radius: 118)
+                .offset(x: isRTL ? -120 : 120, y: -24)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var topBar: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 4) {
+            Text(t(ar: "تفاصيل النادي", en: "Club Details", hi: "क्लब विवरण", zh: "俱乐部详情", ku: "وردەکاری تیم"))
+                .font(.system(size: 30, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+            Text(t(ar: "معلومات النادي الأساسية", en: "Basic club information", hi: "क्लब की बुनियादी जानकारी", zh: "俱乐部基础信息", ku: "زانیاریی بنەڕەتی تیم"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.76))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+        }
+        .padding(.top, 2)
+        .padding(isRTL ? .leading : .trailing, 48)
+        .padding(isRTL ? .trailing : .leading, 48)
+        .overlay(alignment: isRTL ? .topTrailing : .topLeading) {
+            Button {
+                dismiss()
+            } label: {
+                topIcon(symbol: isRTL ? "chevron.right" : "chevron.left")
+            }
+            .buttonStyle(.plain)
+        }
+        .overlay(alignment: isRTL ? .topLeading : .topTrailing) {
+            Button {
+                viewModel.retry()
+            } label: {
+                if viewModel.isLoading || viewModel.isRefreshing {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: 0x2A1850).opacity(0.84))
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.78)
+                    }
+                    .frame(width: 34, height: 34)
+                } else {
+                    topIcon(symbol: "arrow.clockwise")
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func topIcon(symbol: String) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: 0x2A1850).opacity(0.84))
+            Circle()
+                .stroke(Color(hex: 0x8A73D4).opacity(0.44), lineWidth: 0.9)
+
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .frame(width: 34, height: 34)
+        .shadow(color: Color(hex: 0x6E58B8).opacity(0.24), radius: 8, x: 0, y: 4)
+    }
+
+    @ViewBuilder
+    private var contentState: some View {
+        if viewModel.isLoading && !hasCoreOverview {
+            loadingState
+        } else if let message = viewModel.errorMessage, !hasCoreOverview {
+            errorState(message: message)
+        } else {
+            detailsContent
+        }
+    }
+
+    private var loadingState: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 12) {
+                skeletonCard(height: 152)
+                skeletonCard(height: 166)
+            }
+            .redacted(reason: .placeholder)
+            .padding(.top, 4)
+            .padding(.bottom, 10)
+        }
+    }
+
+    private func skeletonCard(height: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(Color.white.opacity(0.10))
+            .frame(height: height)
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 1)
+            )
+    }
+
+    private func errorState(message: String) -> some View {
+        VStack(spacing: 10) {
+            Spacer(minLength: 16)
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 26, weight: .black))
+                .foregroundStyle(Color(hex: 0xFF7E89))
+            Text(t(ar: "تعذر تحميل بيانات النادي", en: "Failed to load club details", hi: "क्लब विवरण लोड नहीं हो सके", zh: "无法加载俱乐部详情", ku: "بارکردنی وردەکارییەکانی تیم شکستی هێنا"))
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+            Text(message)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            Button {
+                viewModel.retry()
+            } label: {
+                Text(t(ar: "إعادة المحاولة", en: "Try Again", hi: "फिर प्रयास करें", zh: "重试", ku: "دووبارە هەوڵبدە"))
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .background(
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(hex: 0x2E1E63), Color(hex: 0x224083)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 16)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var detailsContent: some View {
+        ScrollView(showsIndicators: false) {
+            LazyVStack(spacing: 12) {
+                if let warning = viewModel.errorMessage {
+                    teamDetailsWarningBanner(text: warning)
+                }
+                clubHeroCard
+                overviewSection
+                if let summary = overviewSummaryText {
+                    summarySection(text: summary)
+                }
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 10)
+        }
+    }
+
+    private func teamDetailsWarningBanner(text: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(Color(hex: 0xFFC47E))
+
+            Text(text)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.82))
+                .lineLimit(2)
+                .multilineTextAlignment(isRTL ? .trailing : .leading)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(hex: 0x4A2A24).opacity(0.72))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .stroke(Color(hex: 0xFFC47E).opacity(0.34), lineWidth: 0.9)
+                )
+        )
+    }
+
+    private var clubHeroCard: some View {
+        HStack(spacing: 12) {
+            teamLogo(name: viewModel.overview.teamName, url: viewModel.overview.teamLogoURL, size: 74)
+
+            VStack(alignment: isRTL ? .trailing : .leading, spacing: 4) {
+                Text(localizedDisplayName(viewModel.overview.teamName, in: language))
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+                Text(localizedTopFiveLeagueName(viewModel.overview.leagueID, fallback: viewModel.overview.leagueName))
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+                HStack(spacing: 8) {
+                    if let country = viewModel.overview.country {
+                        heroChip(country)
+                    }
+                    if let city = viewModel.overview.city {
+                        heroChip(city)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(sectionBackground)
+    }
+
+    private func heroChip(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 10, weight: .black))
+            .foregroundStyle(.white.opacity(0.84))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.10))
+            )
+    }
+
+    private var overviewSection: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 9) {
+            sectionTitle(t(ar: "Overview", en: "Overview", hi: "ओवरव्यू", zh: "概览", ku: "پوختە"))
+
+            infoRow(
+                label: t(ar: "النادي", en: "Club", hi: "क्लब", zh: "俱乐部", ku: "تیم"),
+                value: localizedDisplayName(viewModel.overview.teamName, in: language)
+            )
+            infoRow(
+                label: t(ar: "الدوري", en: "League", hi: "लीग", zh: "联赛", ku: "لیگ"),
+                value: localizedTopFiveLeagueName(viewModel.overview.leagueID, fallback: viewModel.overview.leagueName)
+            )
+
+            if let country = viewModel.overview.country {
+                infoRow(label: t(ar: "الدولة", en: "Country", hi: "देश", zh: "国家", ku: "وڵات"), value: country)
+            }
+            if let city = viewModel.overview.city {
+                infoRow(label: t(ar: "المدينة", en: "City", hi: "शहर", zh: "城市", ku: "شار"), value: city)
+            }
+            if let stadiumName = viewModel.overview.stadiumName {
+                infoRow(label: t(ar: "الملعب", en: "Stadium", hi: "स्टेडियम", zh: "球场", ku: "یاریگا"), value: stadiumName)
+            }
+            if let founded = viewModel.overview.founded {
+                infoRow(label: t(ar: "التأسيس", en: "Founded", hi: "स्थापना", zh: "成立", ku: "دامەزراندن"), value: "\(founded)")
+            }
+            if let coach = viewModel.overview.coachName {
+                infoRow(label: t(ar: "المدرب", en: "Coach", hi: "कोच", zh: "教练", ku: "ڕاهێنەر"), value: coach)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .background(sectionBackground)
+    }
+
+    private var overviewSummaryText: String? {
+        let localizedLeague = localizedTopFiveLeagueName(viewModel.overview.leagueID, fallback: viewModel.overview.leagueName)
+        let teamName = localizedDisplayName(viewModel.overview.teamName, in: language)
+        guard let country = viewModel.overview.country else { return nil }
+
+        return t(
+            ar: "\(teamName) نادي من \(country) ينافس في \(localizedLeague).",
+            en: "\(teamName) is a club from \(country) competing in \(localizedLeague).",
+            hi: "\(teamName) \(country) का क्लब है और \(localizedLeague) में प्रतिस्पर्धा करता है।",
+            zh: "\(teamName) 来自 \(country)，参加 \(localizedLeague)。",
+            ku: "\(teamName) یانەیەکە لە \(country) و لە \(localizedLeague) پێشبڕکێ دەکات."
+        )
+    }
+
+    private func summarySection(text: String) -> some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 9) {
+            sectionTitle(t(ar: "معلومات عامة", en: "General Info", hi: "सामान्य जानकारी", zh: "一般信息", ku: "زانیاریی گشتی"))
+            Text(text)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.82))
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+                .multilineTextAlignment(isRTL ? .trailing : .leading)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .background(sectionBackground)
+    }
+
+    private func infoRow(label: String, value: String) -> some View {
+        HStack(spacing: 8) {
+            Text(value)
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .multilineTextAlignment(isRTL ? .trailing : .leading)
+
+            Spacer(minLength: 0)
+
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.66))
+        }
+    }
+
+    private func sectionTitle(_ title: String) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 15, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var sectionBackground: some View {
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [Color(hex: 0x291A5D).opacity(0.94), Color(hex: 0x1E356F).opacity(0.90)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.10), .clear, Color.black.opacity(0.15)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 0.9)
+            )
+            .shadow(color: .black.opacity(0.16), radius: 10, x: 0, y: 6)
+    }
+
+    private func teamLogo(name: String, url: URL?, size: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x385395), Color(hex: 0x253767)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Circle()
+                .stroke(Color.white.opacity(0.24), lineWidth: 0.9)
+
+            if let url {
+                CachedRemoteImage(url: url, contentMode: .fill) {
+                    Text(teamInitials(name))
+                        .font(.system(size: max(10, size * 0.25), weight: .black))
+                        .foregroundStyle(.white.opacity(0.92))
+                }
+                .frame(width: size - 4, height: size - 4)
+                .clipShape(Circle())
+            } else {
+                Text(teamInitials(name))
+                    .font(.system(size: max(10, size * 0.25), weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+            }
+        }
+        .frame(width: size, height: size)
+    }
+
+    private func teamInitials(_ name: String) -> String {
+        let words = name.split(separator: " ")
+        if let first = words.first, let second = words.dropFirst().first {
+            return "\(first.prefix(1))\(second.prefix(1))".uppercased()
+        }
+        return String(words.first?.prefix(2) ?? "TM").uppercased()
+    }
+
+    private func localizedTopFiveLeagueName(_ leagueID: Int, fallback: String) -> String {
+        switch leagueID {
+        case 39:
+            return t(ar: "الدوري الإنجليزي", en: "Premier League", hi: "प्रीमियर लीग", zh: "英超", ku: "پریمیەر لیگ")
+        case 140:
+            return t(ar: "الدوري الإسباني", en: "La Liga", hi: "ला लीगा", zh: "西甲", ku: "لا لیگا")
+        case 135:
+            return t(ar: "الدوري الإيطالي", en: "Serie A", hi: "सीरी ए", zh: "意甲", ku: "سێری ئا")
+        case 78:
+            return t(ar: "الدوري الألماني", en: "Bundesliga", hi: "बुंडेसलीगा", zh: "德甲", ku: "بوندسلیگا")
+        case 61:
+            return t(ar: "الدوري الفرنسي", en: "Ligue 1", hi: "लीग 1", zh: "法甲", ku: "لیگ ١")
+        default:
+            return localizedDisplayName(fallback, in: language)
+        }
+    }
+}
+
+private struct MatchDetailsView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let matchId: Int
+    let language: AppLanguage
+
+    @StateObject private var viewModel: MatchDetailsViewModel
+
+    init(matchId: Int, language: AppLanguage) {
+        self.matchId = matchId
+        self.language = language
+        _viewModel = StateObject(wrappedValue: MatchDetailsViewModel(matchId: matchId))
+    }
+
+    private var isRTL: Bool {
+        language.layoutDirection == .rightToLeft
+    }
+
+    private func t(ar: String, en: String) -> String {
+        language.text(ar: ar, en: en, hi: en, zh: en, ku: ar)
+    }
+
+    private var fixture: FixtureItem? {
+        viewModel.fixture
+    }
+
+    private var awayLineup: FixtureLineup? {
+        lineup(for: fixture?.teams?.away?.id)
+    }
+
+    private var homeLineup: FixtureLineup? {
+        lineup(for: fixture?.teams?.home?.id)
+    }
+
+    private var awayTeamName: String {
+        cleanedText(fixture?.teams?.away?.name) ?? "Away"
+    }
+
+    private var homeTeamName: String {
+        cleanedText(fixture?.teams?.home?.name) ?? "Home"
+    }
+
+    private var awayTeamLogoURL: URL? {
+        safeURL(fixture?.teams?.away?.logo)
+    }
+
+    private var homeTeamLogoURL: URL? {
+        safeURL(fixture?.teams?.home?.logo)
+    }
+
+    private var awayScoreText: String {
+        if let score = fixture?.goals?.away {
+            return "\(score)"
+        }
+        return "-"
+    }
+
+    private var homeScoreText: String {
+        if let score = fixture?.goals?.home {
+            return "\(score)"
+        }
+        return "-"
+    }
+
+    private var currentStatusShort: String {
+        cleanedText(fixture?.fixture?.status?.short)?.uppercased() ?? "--"
+    }
+
+    private var currentStatusText: String {
+        cleanedText(fixture?.fixture?.status?.long)
+            ?? cleanedText(fixture?.fixture?.status?.short)
+            ?? "--"
+    }
+
+    private var competitionName: String {
+        cleanedText(fixture?.league?.name) ?? "--"
+    }
+
+    private var kickoffDate: Date? {
+        if let timestamp = fixture?.fixture?.timestamp, timestamp > 0 {
+            return Date(timeIntervalSince1970: TimeInterval(timestamp))
+        }
+
+        guard let isoDate = cleanedText(fixture?.fixture?.date) else { return nil }
+        if let parsed = MatchDetailsDateParsers.isoWithFractional.date(from: isoDate) {
+            return parsed
+        }
+        return MatchDetailsDateParsers.isoStandard.date(from: isoDate)
+    }
+
+    private var kickoffTimeText: String {
+        guard let kickoffDate else { return "--:--" }
+        return MatchDetailsDateParsers.timeFormatter(localeIdentifier: language.localeIdentifier).string(from: kickoffDate)
+    }
+
+    private var kickoffDateText: String {
+        guard let kickoffDate else { return "--" }
+        return MatchDetailsDateParsers.dateFormatter(localeIdentifier: language.localeIdentifier).string(from: kickoffDate)
+    }
+
+    private var venueText: String {
+        let venueName = cleanedText(fixture?.fixture?.venue?.name)
+        let venueCity = cleanedText(fixture?.fixture?.venue?.city)
+
+        switch (venueName, venueCity) {
+        case let (name?, city?):
+            return "\(name) • \(city)"
+        case let (name?, nil):
+            return name
+        case let (nil, city?):
+            return city
+        default:
+            return "--"
+        }
+    }
+
+    private var shouldShowKickoffInCenter: Bool {
+        let upcomingCodes: Set<String> = ["NS", "TBD"]
+        return upcomingCodes.contains(currentStatusShort)
+    }
+
+    private var hasSubstitutes: Bool {
+        viewModel.lineups.contains { !players(from: $0.substitutes).isEmpty }
+    }
+
+    private var coachRows: [MatchCoachRow] {
+        var rows: [MatchCoachRow] = []
+        for lineup in viewModel.lineups {
+            guard let teamName = cleanedText(lineup.team?.name),
+                  let coachName = cleanedText(lineup.coach?.name) else {
+                continue
+            }
+            rows.append(MatchCoachRow(teamName: teamName, coachName: coachName, coachPhotoURL: safeURL(lineup.coach?.photo)))
+        }
+        return rows
+    }
+
+    private var statisticsRows: [MatchStatisticDisplayRow] {
+        guard !viewModel.statistics.isEmpty else { return [] }
+
+        let awayTeamID = fixture?.teams?.away?.id
+        let homeTeamID = fixture?.teams?.home?.id
+
+        let awayStats = statistics(for: awayTeamID) ?? viewModel.statistics.first
+        let homeStats = statistics(for: homeTeamID) ?? (viewModel.statistics.count > 1 ? viewModel.statistics[1] : nil)
+
+        guard let awayStats else { return [] }
+
+        let awayPairs = awayStats.statistics.compactMap { stat -> (String, String)? in
+            guard let type = cleanedText(stat.type) else { return nil }
+            return (type, statisticValueText(stat.value))
+        }
+        let homePairs = (homeStats?.statistics ?? []).compactMap { stat -> (String, String)? in
+            guard let type = cleanedText(stat.type) else { return nil }
+            return (type, statisticValueText(stat.value))
+        }
+
+        let awayMap = Dictionary(uniqueKeysWithValues: awayPairs)
+        let homeMap = Dictionary(uniqueKeysWithValues: homePairs)
+        let orderedTypes = orderedUniqueTypes(from: awayPairs.map(\.0) + homePairs.map(\.0))
+
+        return orderedTypes.map { type in
+            MatchStatisticDisplayRow(
+                type: type,
+                awayValue: awayMap[type] ?? "--",
+                homeValue: homeMap[type] ?? "--"
+            )
+        }
+    }
+
+    private var orderedEvents: [FixtureEventItem] {
+        viewModel.events
+    }
+
+    var body: some View {
+        ZStack {
+            detailsBackground
+
+            VStack(spacing: 12) {
+                topBar
+                contentState
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 8)
+        }
+        .toolbar(.hidden, for: .navigationBar)
+        .environment(\.layoutDirection, language.layoutDirection)
+        .task(id: matchId) {
+            await viewModel.fetchDetails()
+        }
+    }
+
+    private var detailsBackground: some View {
+        ZStack {
+            LinearGradient(
+                colors: [Color(hex: 0x10042A), Color(hex: 0x0A204A), Color(hex: 0x083A75)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Circle()
+                .fill(Color(hex: 0x5BCBFF).opacity(0.24))
+                .frame(width: 330, height: 330)
+                .blur(radius: 128)
+                .offset(x: -170, y: -250)
+
+            Circle()
+                .fill(Color(hex: 0x4A8EFF).opacity(0.20))
+                .frame(width: 300, height: 300)
+                .blur(radius: 118)
+                .offset(x: 170, y: 270)
+
+            Circle()
+                .fill(Color(hex: 0xB36DFF).opacity(0.13))
+                .frame(width: 280, height: 280)
+                .blur(radius: 122)
+                .offset(x: isRTL ? -120 : 120, y: -20)
+        }
+        .ignoresSafeArea()
+    }
+
+    private var topBar: some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 4) {
+            Text(t(ar: "تفاصيل المباراة", en: "Match Details"))
+                .font(.system(size: 30, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+
+            Text(t(ar: "التشكيلة، الإحصائيات، وأحداث المباراة", en: "Lineups, statistics, and match events"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.76))
+                .lineLimit(1)
+                .minimumScaleFactor(0.74)
+                .frame(maxWidth: .infinity, alignment: isRTL ? .trailing : .leading)
+        }
+        .padding(.top, 2)
+        .padding(isRTL ? .leading : .trailing, 48)
+        .padding(isRTL ? .trailing : .leading, 48)
+        .overlay(alignment: isRTL ? .topTrailing : .topLeading) {
+            topIconButton(symbol: isRTL ? "chevron.right" : "chevron.left") {
+                dismiss()
+            }
+        }
+        .overlay(alignment: isRTL ? .topLeading : .topTrailing) {
+            Button {
+                viewModel.retry()
+            } label: {
+                if viewModel.isLoading {
+                    ZStack {
+                        Circle()
+                            .fill(Color(hex: 0x2A1850).opacity(0.84))
+                        ProgressView()
+                            .tint(.white)
+                            .scaleEffect(0.78)
+                    }
+                    .frame(width: 34, height: 34)
+                } else {
+                    topIconButtonLabel(symbol: "arrow.clockwise")
+                }
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    @ViewBuilder
+    private var contentState: some View {
+        if viewModel.isLoading && fixture == nil {
+            loadingState
+        } else if let message = viewModel.errorMessage, fixture == nil {
+            errorState(message: message)
+        } else {
+            detailsContent
+        }
+    }
+
+    private var loadingState: some View {
+        VStack(spacing: 12) {
+            Spacer(minLength: 18)
+            ProgressView()
+                .tint(.white)
+                .scaleEffect(1.05)
+            Text(t(ar: "جاري تحميل تفاصيل المباراة...", en: "Loading match details..."))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.78))
+            Spacer(minLength: 18)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func errorState(message: String) -> some View {
+        VStack(spacing: 10) {
+            Spacer(minLength: 18)
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 26, weight: .black))
+                .foregroundStyle(Color(hex: 0xFF7E89))
+            Text(t(ar: "تعذر تحميل تفاصيل المباراة", en: "Failed to load match details"))
+                .font(.system(size: 18, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+            Text(message)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.72))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+            Button {
+                viewModel.retry()
+            } label: {
+                Text(t(ar: "إعادة المحاولة", en: "Try Again"))
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 9)
+                    .background(
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    colors: [Color(hex: 0x2E1E63), Color(hex: 0x224083)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
+            Spacer(minLength: 18)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var detailsContent: some View {
+        ScrollView(showsIndicators: false) {
+            LazyVStack(spacing: 12) {
+                if fixture != nil {
+                    headerCard
+                    lineupSection
+
+                    if hasSubstitutes {
+                        substitutesSection
+                    }
+
+                    if !coachRows.isEmpty {
+                        coachesSection
+                    }
+
+                    if !statisticsRows.isEmpty {
+                        statisticsSection
+                    }
+
+                    if !orderedEvents.isEmpty {
+                        eventsSection
+                    }
+                }
+            }
+            .padding(.top, 4)
+            .padding(.bottom, 10)
+        }
+    }
+
+    private var headerCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                HStack(spacing: 6) {
+                    leagueBadgeView(
+                        url: safeURL(fixture?.league?.flag) ?? safeURL(fixture?.league?.logo),
+                        fallbackText: String(competitionName.prefix(1)).uppercased()
+                    )
+                    Text(competitionName)
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(.white.opacity(0.90))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(Color.white.opacity(0.10))
+                )
+
+                Spacer(minLength: 0)
+                statusChip(label: currentStatusText)
+            }
+
+            HStack(spacing: 10) {
+                teamColumn(name: awayTeamName, logoURL: awayTeamLogoURL)
+                centerScoreColumn
+                teamColumn(name: homeTeamName, logoURL: homeTeamLogoURL)
+            }
+            .environment(\.layoutDirection, .leftToRight)
+
+            HStack(spacing: 8) {
+                infoChip(symbol: "mappin.and.ellipse", text: venueText)
+                infoChip(symbol: "clock.fill", text: kickoffTimeText)
+                infoChip(symbol: "calendar", text: kickoffDateText)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 14)
+        .background(glassCardBackground(cornerRadius: 24))
+        .shadow(color: .black.opacity(0.16), radius: 10, x: 0, y: 6)
+    }
+
+    private var centerScoreColumn: some View {
+        VStack(spacing: 5) {
+            if shouldShowKickoffInCenter {
+                Text(kickoffTimeText)
+                    .font(.system(size: 24, weight: .black, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+            } else {
+                HStack(spacing: 5) {
+                    Text(awayScoreText)
+                    Text("-")
+                    Text(homeScoreText)
+                }
+                .font(.system(size: 24, weight: .black, design: .rounded))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.70)
+            }
+
+            if let elapsed = fixture?.fixture?.status?.elapsed, elapsed > 0 {
+                Text("\(elapsed)'")
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(Color(hex: 0xFF9F7D))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color(hex: 0x4A241E).opacity(0.88))
+                    )
+            }
+        }
+        .frame(minWidth: 86)
+    }
+
+    private var lineupSection: some View {
+        sectionCard(title: t(ar: "التشكيلة الأساسية", en: "Starting Lineups"), icon: "person.3.fill") {
+            let awayPlayers = players(from: awayLineup?.startXI)
+            let homePlayers = players(from: homeLineup?.startXI)
+
+            if awayPlayers.isEmpty && homePlayers.isEmpty {
+                Text(t(ar: "لا توجد تشكيلة متاحة حالياً", en: "No lineup available right now"))
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.78))
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 12)
+            } else {
+                VStack(spacing: 12) {
+                    if !awayPlayers.isEmpty {
+                        lineupPitchTeamCard(
+                            teamName: awayTeamName,
+                            formation: cleanedText(awayLineup?.formation),
+                            players: awayPlayers,
+                            goalkeeperAtBottom: false
+                        )
+                    }
+
+                    if !homePlayers.isEmpty {
+                        lineupPitchTeamCard(
+                            teamName: homeTeamName,
+                            formation: cleanedText(homeLineup?.formation),
+                            players: homePlayers,
+                            goalkeeperAtBottom: true
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private var substitutesSection: some View {
+        sectionCard(title: t(ar: "البدلاء", en: "Substitutes"), icon: "person.2.wave.2.fill") {
+            VStack(spacing: 9) {
+                lineupTeamCard(
+                    teamName: awayTeamName,
+                    formation: nil,
+                    players: players(from: awayLineup?.substitutes),
+                    emptyMessage: nil
+                )
+                lineupTeamCard(
+                    teamName: homeTeamName,
+                    formation: nil,
+                    players: players(from: homeLineup?.substitutes),
+                    emptyMessage: nil
+                )
+            }
+        }
+    }
+
+    private var coachesSection: some View {
+        sectionCard(title: t(ar: "المدربون", en: "Coaches"), icon: "person.crop.square.fill") {
+            VStack(spacing: 8) {
+                ForEach(Array(coachRows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 8) {
+                        coachAvatar(name: row.coachName, photoURL: row.coachPhotoURL)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(row.coachName)
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+                            Text(row.teamName)
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
+                }
+            }
+        }
+    }
+
+    private var statisticsSection: some View {
+        sectionCard(title: t(ar: "الإحصائيات", en: "Statistics"), icon: "chart.bar.xaxis") {
+            VStack(spacing: 8) {
+                HStack {
+                    Text(awayTeamName)
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white.opacity(0.84))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    Spacer(minLength: 0)
+                    Text(homeTeamName)
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white.opacity(0.84))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+                .environment(\.layoutDirection, .leftToRight)
+
+                ForEach(Array(statisticsRows.enumerated()), id: \.offset) { _, row in
+                    HStack(spacing: 6) {
+                        Text(row.awayValue)
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundStyle(Color(hex: 0x8CD2FF))
+                            .frame(minWidth: 44, alignment: .leading)
+
+                        Text(row.type)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.86))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .frame(maxWidth: .infinity, alignment: .center)
+
+                        Text(row.homeValue)
+                            .font(.system(size: 12, weight: .black))
+                            .foregroundStyle(Color(hex: 0x8CD2FF))
+                            .frame(minWidth: 44, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                    )
+                    .environment(\.layoutDirection, .leftToRight)
+                }
+            }
+        }
+    }
+
+    private var eventsSection: some View {
+        sectionCard(title: t(ar: "أحداث المباراة", en: "Match Events"), icon: "list.bullet.rectangle.portrait.fill") {
+            VStack(spacing: 8) {
+                ForEach(Array(orderedEvents.enumerated()), id: \.offset) { _, event in
+                    eventRow(event)
+                }
+            }
+        }
+    }
+
+    private func eventRow(_ event: FixtureEventItem) -> some View {
+        HStack(spacing: 10) {
+            Text(eventMinuteText(event))
+                .font(.system(size: 11, weight: .black))
+                .foregroundStyle(eventTint(for: event))
+                .frame(width: 48, alignment: .leading)
+
+            Image(systemName: eventIcon(for: event))
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(eventTint(for: event))
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(eventPrimaryText(event))
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+
+                if let secondary = eventSecondaryText(event) {
+                    Text(secondary)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.70))
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+        .environment(\.layoutDirection, .leftToRight)
+    }
+
+    private func sectionCard<Content: View>(title: String, icon: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: isRTL ? .trailing : .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(Color(hex: 0x9FD7FF))
+                Text(title)
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+                Spacer(minLength: 0)
+            }
+            .environment(\.layoutDirection, .leftToRight)
+
+            content()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 13)
+        .background(glassCardBackground(cornerRadius: 22))
+        .shadow(color: .black.opacity(0.14), radius: 9, x: 0, y: 5)
+    }
+
+    private func lineupPitchTeamCard(
+        teamName: String,
+        formation: String?,
+        players: [FixtureLineupPlayer],
+        goalkeeperAtBottom: Bool
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Text(teamName)
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Spacer(minLength: 0)
+
+                Text(formation ?? "--")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(Color(hex: 0xA5E6FF))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(
+                        Capsule()
+                            .fill(Color(hex: 0x163A5F).opacity(0.88))
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.white.opacity(0.18), lineWidth: 0.9)
+                    )
+            }
+            .environment(\.layoutDirection, .leftToRight)
+
+            LineupPitchView(
+                teamName: teamName,
+                formation: formation,
+                players: players,
+                goalkeeperAtBottom: goalkeeperAtBottom
+            )
+            .frame(height: 332)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(Color.white.opacity(0.10), lineWidth: 0.8)
+                )
+        )
+    }
+
+    private func lineupTeamCard(teamName: String, formation: String?, players: [FixtureLineupPlayer], emptyMessage: String? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text(teamName)
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(.white.opacity(0.90))
+                    .lineLimit(1)
+
+                if let formation {
+                    Text(formation)
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(Color(hex: 0x9FD7FF))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            Capsule()
+                                .fill(Color(hex: 0x17355B).opacity(0.86))
+                        )
+                }
+
+                Spacer(minLength: 0)
+            }
+            .environment(\.layoutDirection, .leftToRight)
+
+            if players.isEmpty {
+                if let emptyMessage {
+                    Text(emptyMessage)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.70))
+                } else {
+                    Text(t(ar: "لا توجد تشكيلة متاحة حالياً", en: "No lineup available right now"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.70))
+                }
+            } else {
+                VStack(spacing: 4) {
+                    ForEach(Array(players.enumerated()), id: \.offset) { _, player in
+                        HStack(spacing: 6) {
+                            if let number = player.number {
+                                Text("#\(number)")
+                                    .font(.system(size: 11, weight: .black))
+                                    .foregroundStyle(Color(hex: 0x9FD7FF))
+                                    .frame(width: 30, alignment: .leading)
+                            }
+                            Text(cleanedText(player.name) ?? "--")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.86))
+                                .lineLimit(1)
+
+                            Spacer(minLength: 0)
+
+                            if let position = cleanedText(player.pos) {
+                                Text(position)
+                                    .font(.system(size: 10, weight: .black))
+                                    .foregroundStyle(.white.opacity(0.68))
+                            }
+                        }
+                        .environment(\.layoutDirection, .leftToRight)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color.white.opacity(0.08))
+        )
+    }
+
+    private func coachAvatar(name: String, photoURL: URL?) -> some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x375193), Color(hex: 0x253B6E)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Circle()
+                .stroke(Color.white.opacity(0.24), lineWidth: 0.9)
+
+            if let photoURL {
+                CachedRemoteImage(url: photoURL, contentMode: .fill) {
+                    Text(teamInitials(name))
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(.white.opacity(0.92))
+                }
+                .frame(width: 30, height: 30)
+                .clipShape(Circle())
+            } else {
+                Text(teamInitials(name))
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+            }
+        }
+        .frame(width: 34, height: 34)
+    }
+
+    private func teamColumn(name: String, logoURL: URL?) -> some View {
+        VStack(spacing: 6) {
+            teamLogoView(name: name, logoURL: logoURL)
+            Text(name)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.70)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func teamLogoView(name: String, logoURL: URL?) -> some View {
+        ZStack {
+            Circle()
+                .fill(
+                    LinearGradient(
+                        colors: [Color(hex: 0x385395), Color(hex: 0x253767)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Circle()
+                .stroke(Color.white.opacity(0.24), lineWidth: 0.9)
+
+            if let logoURL {
+                CachedRemoteImage(url: logoURL, contentMode: .fill) {
+                    Text(teamInitials(name))
+                        .font(.system(size: 11, weight: .black))
+                        .foregroundStyle(.white.opacity(0.92))
+                }
+                .frame(width: 34, height: 34)
+                .clipShape(Circle())
+            } else {
+                Text(teamInitials(name))
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.white.opacity(0.92))
+            }
+        }
+        .frame(width: 38, height: 38)
+    }
+
+    private func infoChip(symbol: String, text: String) -> some View {
+        HStack(spacing: 4) {
+            Image(systemName: symbol)
+            Text(text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .font(.system(size: 10, weight: .semibold))
+        .foregroundStyle(.white.opacity(0.78))
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.10))
+        )
+    }
+
+    private func statusChip(label: String) -> some View {
+        let upperLabel = label.uppercased()
+        let tint: Color
+        let background: Color
+
+        switch upperLabel {
+        case "LIVE":
+            tint = Color(hex: 0xFF5A57)
+            background = Color(hex: 0x451616)
+        case "HALF TIME", "HT":
+            tint = Color(hex: 0xFFB347)
+            background = Color(hex: 0x4A2E14)
+        case "MATCH FINISHED", "FT":
+            tint = Color(hex: 0x9AA4FF)
+            background = Color(hex: 0x232A56)
+        case "POSTPONED", "PST":
+            tint = Color(hex: 0xC7CBE9)
+            background = Color(hex: 0x2F3353)
+        case "CANCELLED", "CANC":
+            tint = Color(hex: 0xE1A9B8)
+            background = Color(hex: 0x47232E)
+        default:
+            tint = Color(hex: 0x82D0FF)
+            background = Color(hex: 0x17355B)
+        }
+
+        return Text(label)
+            .font(.system(size: 10, weight: .black))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(
+                Capsule()
+                    .fill(background.opacity(0.92))
+            )
+            .overlay(
+                Capsule()
+                    .stroke(tint.opacity(0.50), lineWidth: 0.9)
+            )
+    }
+
+    private func topIconButton(symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            topIconButtonLabel(symbol: symbol)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func topIconButtonLabel(symbol: String) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color(hex: 0x2A1850).opacity(0.84))
+            Circle()
+                .stroke(Color(hex: 0x8A73D4).opacity(0.44), lineWidth: 0.9)
+
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .black))
+                .foregroundStyle(.white.opacity(0.92))
+        }
+        .frame(width: 34, height: 34)
+        .shadow(color: Color(hex: 0x6E58B8).opacity(0.24), radius: 8, x: 0, y: 4)
+    }
+
+    private func glassCardBackground(cornerRadius: CGFloat) -> some View {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(
+                LinearGradient(
+                    colors: [Color(hex: 0x291A5D).opacity(0.94), Color(hex: 0x1E356F).opacity(0.90)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.10), .clear, Color.black.opacity(0.15)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(Color.white.opacity(0.14), lineWidth: 0.9)
+            )
+    }
+
+    private func leagueBadgeView(url: URL?, fallbackText: String) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.12))
+                .frame(width: 16, height: 16)
+
+            if let url {
+                CachedRemoteImage(url: url, contentMode: .fill) {
+                    Text(fallbackText)
+                        .font(.system(size: 8, weight: .black))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                .frame(width: 14, height: 14)
+                .clipShape(Circle())
+            } else {
+                Text(fallbackText)
+                    .font(.system(size: 8, weight: .black))
+                    .foregroundStyle(.white.opacity(0.85))
+            }
+        }
+    }
+
+    private func eventMinuteText(_ event: FixtureEventItem) -> String {
+        let elapsed = event.time?.elapsed ?? 0
+        let extra = event.time?.extra ?? 0
+        if elapsed <= 0 { return "--" }
+        if extra > 0 {
+            return "\(elapsed)+\(extra)'"
+        }
+        return "\(elapsed)'"
+    }
+
+    private func eventPrimaryText(_ event: FixtureEventItem) -> String {
+        if let detail = cleanedText(event.detail) {
+            return detail
+        }
+        if let type = cleanedText(event.type) {
+            return type
+        }
+        return t(ar: "حدث", en: "Event")
+    }
+
+    private func eventSecondaryText(_ event: FixtureEventItem) -> String? {
+        var fragments: [String] = []
+
+        if let team = cleanedText(event.team?.name) {
+            fragments.append(team)
+        }
+        if let player = cleanedText(event.player?.name) {
+            fragments.append(player)
+        }
+        if let assist = cleanedText(event.assist?.name) {
+            fragments.append("Assist: \(assist)")
+        }
+        if let comments = cleanedText(event.comments) {
+            fragments.append(comments)
+        }
+
+        guard !fragments.isEmpty else { return nil }
+        return fragments.joined(separator: " • ")
+    }
+
+    private func eventIcon(for event: FixtureEventItem) -> String {
+        let key = "\(cleanedText(event.type) ?? "") \(cleanedText(event.detail) ?? "")".uppercased()
+        if key.contains("GOAL") {
+            return "soccerball"
+        }
+        if key.contains("YELLOW") {
+            return "rectangle.fill"
+        }
+        if key.contains("RED") {
+            return "rectangle.fill"
+        }
+        if key.contains("SUBST") {
+            return "arrow.triangle.2.circlepath"
+        }
+        return "circle.fill"
+    }
+
+    private func eventTint(for event: FixtureEventItem) -> Color {
+        let key = "\(cleanedText(event.type) ?? "") \(cleanedText(event.detail) ?? "")".uppercased()
+        if key.contains("GOAL") {
+            return Color(hex: 0x86FFB0)
+        }
+        if key.contains("YELLOW") {
+            return Color(hex: 0xFFD166)
+        }
+        if key.contains("RED") {
+            return Color(hex: 0xFF6B7A)
+        }
+        if key.contains("SUBST") {
+            return Color(hex: 0x8DD5FF)
+        }
+        return Color(hex: 0xCFD7FF)
+    }
+
+    private func players(from source: [FixtureLineupMember]?) -> [FixtureLineupPlayer] {
+        guard let source else { return [] }
+        return source.compactMap(\.player)
+    }
+
+    private func lineup(for teamID: Int?) -> FixtureLineup? {
+        guard let teamID else { return nil }
+        return viewModel.lineups.first { $0.team?.id == teamID }
+    }
+
+    private func statistics(for teamID: Int?) -> FixtureTeamStatistics? {
+        guard let teamID else { return nil }
+        return viewModel.statistics.first { $0.team?.id == teamID }
+    }
+
+    private func orderedUniqueTypes(from source: [String]) -> [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+
+        for item in source {
+            if seen.insert(item).inserted {
+                ordered.append(item)
+            }
+        }
+
+        return ordered
+    }
+
+    private func statisticValueText(_ value: FixtureStatisticValue?) -> String {
+        guard let value else { return "--" }
+        let text = value.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "--" : text
+    }
+
+    private func cleanedText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let cleaned = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+
+    private func safeURL(_ raw: String?) -> URL? {
+        guard let cleaned = cleanedText(raw) else { return nil }
+        return URL(string: cleaned)
+    }
+
+    private func teamInitials(_ name: String) -> String {
+        let words = name.split(separator: " ")
+        if let first = words.first, let second = words.dropFirst().first {
+            return "\(first.prefix(1))\(second.prefix(1))".uppercased()
+        }
+        return String(words.first?.prefix(2) ?? "TM").uppercased()
+    }
+}
+
+private struct MatchStatisticDisplayRow {
+    let type: String
+    let awayValue: String
+    let homeValue: String
+}
+
+private struct MatchCoachRow {
+    let teamName: String
+    let coachName: String
+    let coachPhotoURL: URL?
+}
+
+private enum MatchDetailsDateParsers {
+    static let isoWithFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    static let isoStandard: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    static func timeFormatter(localeIdentifier: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: localeIdentifier)
+        formatter.timeZone = .current
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }
+
+    static func dateFormatter(localeIdentifier: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: localeIdentifier)
+        formatter.timeZone = .current
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .none
+        return formatter
+    }
+}
+
+private struct LineupPitchView: View {
+    let teamName: String
+    let formation: String?
+    let players: [FixtureLineupPlayer]
+    let goalkeeperAtBottom: Bool
+    let onPlayerTap: ((FixtureLineupPlayer) -> Void)?
+
+    init(
+        teamName: String,
+        formation: String?,
+        players: [FixtureLineupPlayer],
+        goalkeeperAtBottom: Bool,
+        onPlayerTap: ((FixtureLineupPlayer) -> Void)? = nil
+    ) {
+        self.teamName = teamName
+        self.formation = formation
+        self.players = players
+        self.goalkeeperAtBottom = goalkeeperAtBottom
+        self.onPlayerTap = onPlayerTap
+    }
+
+    private var plottedPlayers: [LineupPitchPlottedPlayer] {
+        guard !players.isEmpty else { return [] }
+
+        let indexedPlayers = Array(players.enumerated())
+        let fallbackPoints = fallbackCoordinates(for: players, formation: formation, goalkeeperAtBottom: goalkeeperAtBottom)
+
+        let allGridRows = indexedPlayers.compactMap { parseGrid($0.element.grid)?.row }
+        let allGridColumns = indexedPlayers.compactMap { parseGrid($0.element.grid)?.column }
+        let hasGridData = !allGridRows.isEmpty && !allGridColumns.isEmpty
+        let maxGridRow = max(allGridRows.max() ?? 1, 1)
+        let maxGridColumn = max(allGridColumns.max() ?? 1, 1)
+
+        return indexedPlayers.map { index, player in
+            let fallback = fallbackPoints[index] ?? LineupPitchPoint(x: 0.5, y: 0.5)
+
+            let point: LineupPitchPoint
+            if hasGridData, let parsedGrid = parseGrid(player.grid) {
+                var y = Double(parsedGrid.row) / Double(maxGridRow + 1)
+                if goalkeeperAtBottom {
+                    y = 1 - y
+                }
+                point = LineupPitchPoint(
+                    x: Double(parsedGrid.column) / Double(maxGridColumn + 1),
+                    y: y
+                )
+            } else {
+                point = fallback
+            }
+
+            return LineupPitchPlottedPlayer(
+                id: "lineup-\(index)-\(player.id ?? -1)-\(player.number ?? -1)",
+                player: player,
+                x: clampX(point.x),
+                y: clampY(point.y)
+            )
+        }
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                pitchBackground
+
+                ForEach(plottedPlayers) { plotted in
+                    playerNode(plotted)
+                        .position(
+                            x: plotted.x * geo.size.width,
+                            y: plotted.y * geo.size.height
+                        )
+                }
+            }
+        }
+        .environment(\.layoutDirection, .leftToRight)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.16), lineWidth: 0.9)
+        )
+        .shadow(color: Color.black.opacity(0.18), radius: 10, x: 0, y: 5)
+    }
+
+    @ViewBuilder
+    private func playerNode(_ plotted: LineupPitchPlottedPlayer) -> some View {
+        if let onPlayerTap {
+            Button {
+                onPlayerTap(plotted.player)
+            } label: {
+                PlayerBubbleView(
+                    playerName: cleanedText(plotted.player.name) ?? "--",
+                    number: plotted.player.number,
+                    photoURL: playerPhotoURL(for: plotted.player)
+                )
+            }
+            .buttonStyle(.plain)
+        } else {
+            PlayerBubbleView(
+                playerName: cleanedText(plotted.player.name) ?? "--",
+                number: plotted.player.number,
+                photoURL: playerPhotoURL(for: plotted.player)
+            )
+        }
+    }
+
+    private var pitchBackground: some View {
+        GeometryReader { geo in
+            let size = geo.size
+            let horizontalInset = max(10, size.width * 0.03)
+            let verticalInset = max(10, size.height * 0.03)
+            let fieldRect = CGRect(
+                x: horizontalInset,
+                y: verticalInset,
+                width: size.width - (horizontalInset * 2),
+                height: size.height - (verticalInset * 2)
+            )
+
+            ZStack {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [Color(hex: 0x0C7A3A), Color(hex: 0x0A5F2E), Color(hex: 0x0C7A3A)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+
+                // Grass bands for better pitch depth.
+                HStack(spacing: 0) {
+                    ForEach(0..<10, id: \.self) { index in
+                        Rectangle()
+                            .fill(index.isMultiple(of: 2) ? Color.white.opacity(0.045) : Color.clear)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                Path { path in
+                    path.addRoundedRect(in: fieldRect, cornerSize: CGSize(width: 12, height: 12))
+
+                    let middleY = fieldRect.midY
+                    path.move(to: CGPoint(x: fieldRect.minX, y: middleY))
+                    path.addLine(to: CGPoint(x: fieldRect.maxX, y: middleY))
+
+                    let centerCircleDiameter = min(fieldRect.width * 0.26, fieldRect.height * 0.20)
+                    let centerCircleRect = CGRect(
+                        x: fieldRect.midX - centerCircleDiameter / 2,
+                        y: middleY - centerCircleDiameter / 2,
+                        width: centerCircleDiameter,
+                        height: centerCircleDiameter
+                    )
+                    path.addEllipse(in: centerCircleRect)
+
+                    let penaltyWidth = fieldRect.width * 0.56
+                    let penaltyHeight = fieldRect.height * 0.16
+                    let topPenaltyRect = CGRect(
+                        x: fieldRect.midX - penaltyWidth / 2,
+                        y: fieldRect.minY,
+                        width: penaltyWidth,
+                        height: penaltyHeight
+                    )
+                    let bottomPenaltyRect = CGRect(
+                        x: fieldRect.midX - penaltyWidth / 2,
+                        y: fieldRect.maxY - penaltyHeight,
+                        width: penaltyWidth,
+                        height: penaltyHeight
+                    )
+                    path.addRect(topPenaltyRect)
+                    path.addRect(bottomPenaltyRect)
+
+                    let goalBoxWidth = fieldRect.width * 0.28
+                    let goalBoxHeight = fieldRect.height * 0.075
+                    let topGoalBoxRect = CGRect(
+                        x: fieldRect.midX - goalBoxWidth / 2,
+                        y: fieldRect.minY,
+                        width: goalBoxWidth,
+                        height: goalBoxHeight
+                    )
+                    let bottomGoalBoxRect = CGRect(
+                        x: fieldRect.midX - goalBoxWidth / 2,
+                        y: fieldRect.maxY - goalBoxHeight,
+                        width: goalBoxWidth,
+                        height: goalBoxHeight
+                    )
+                    path.addRect(topGoalBoxRect)
+                    path.addRect(bottomGoalBoxRect)
+                }
+                .stroke(Color.white.opacity(0.48), lineWidth: 1.2)
+
+                Circle()
+                    .fill(Color.white.opacity(0.70))
+                    .frame(width: 4, height: 4)
+                    .position(x: fieldRect.midX, y: fieldRect.midY)
+
+                Circle()
+                    .fill(Color.white.opacity(0.50))
+                    .frame(width: 3.2, height: 3.2)
+                    .position(x: fieldRect.midX, y: fieldRect.minY + fieldRect.height * 0.11)
+
+                Circle()
+                    .fill(Color.white.opacity(0.50))
+                    .frame(width: 3.2, height: 3.2)
+                    .position(x: fieldRect.midX, y: fieldRect.maxY - fieldRect.height * 0.11)
+            }
+        }
+    }
+
+    private func playerPhotoURL(for player: FixtureLineupPlayer) -> URL? {
+        if let cleanedPhoto = cleanedText(player.photo), let url = URL(string: cleanedPhoto) {
+            return url
+        }
+
+        if let id = player.id, id > 0 {
+            return URL(string: "https://media.api-sports.io/football/players/\(id).png")
+        }
+
+        return nil
+    }
+
+    private func fallbackCoordinates(
+        for players: [FixtureLineupPlayer],
+        formation: String?,
+        goalkeeperAtBottom: Bool
+    ) -> [Int: LineupPitchPoint] {
+        guard !players.isEmpty else { return [:] }
+
+        let goalkeeperIndex = detectGoalkeeperIndex(in: players)
+        let orderedIndices = [goalkeeperIndex] + players.indices.filter { $0 != goalkeeperIndex }
+
+        var rowCounts = [1] + parsedFormationRows(from: formation)
+        if rowCounts.count == 1 {
+            rowCounts.append(contentsOf: [4, 4, 2])
+        }
+
+        var totalSlots = rowCounts.reduce(0, +)
+        if totalSlots < players.count {
+            rowCounts[rowCounts.count - 1] += (players.count - totalSlots)
+            totalSlots = rowCounts.reduce(0, +)
+        } else if totalSlots > players.count {
+            var overflow = totalSlots - players.count
+            for rowIndex in stride(from: rowCounts.count - 1, through: 1, by: -1) {
+                guard overflow > 0 else { break }
+                let reduction = min(overflow, max(0, rowCounts[rowIndex] - 1))
+                rowCounts[rowIndex] -= reduction
+                overflow -= reduction
+            }
+        }
+
+        var result: [Int: LineupPitchPoint] = [:]
+        var cursor = 0
+
+        for (rowIndex, rowCount) in rowCounts.enumerated() {
+            guard rowCount > 0 else { continue }
+            let upperBound = min(cursor + rowCount, orderedIndices.count)
+            guard cursor < upperBound else { break }
+
+            let rowPlayers = Array(orderedIndices[cursor..<upperBound])
+            let rawY = Double(rowIndex + 1) / Double(rowCounts.count + 1)
+            let y = goalkeeperAtBottom ? (1 - rawY) : rawY
+
+            for (slotIndex, originalIndex) in rowPlayers.enumerated() {
+                let x = Double(slotIndex + 1) / Double(rowPlayers.count + 1)
+                result[originalIndex] = LineupPitchPoint(x: x, y: y)
+            }
+            cursor = upperBound
+        }
+
+        return result
+    }
+
+    private func parsedFormationRows(from formation: String?) -> [Int] {
+        guard let formation = cleanedText(formation) else {
+            return [4, 4, 2]
+        }
+
+        let numbers = formation
+            .split(whereSeparator: { !$0.isNumber })
+            .compactMap { Int($0) }
+            .filter { $0 > 0 }
+
+        return numbers.isEmpty ? [4, 4, 2] : numbers
+    }
+
+    private func detectGoalkeeperIndex(in players: [FixtureLineupPlayer]) -> Int {
+        if let idx = players.firstIndex(where: { player in
+            let normalizedPos = cleanedText(player.pos)?.uppercased() ?? ""
+            return normalizedPos == "G" || normalizedPos == "GK"
+        }) {
+            return idx
+        }
+
+        if let idx = players.firstIndex(where: { player in
+            guard let grid = parseGrid(player.grid) else { return false }
+            return grid.row == 1
+        }) {
+            return idx
+        }
+
+        if let idx = players.firstIndex(where: { $0.number == 1 }) {
+            return idx
+        }
+
+        return 0
+    }
+
+    private func parseGrid(_ value: String?) -> (row: Int, column: Int)? {
+        guard let cleaned = cleanedText(value) else { return nil }
+        let parts = cleaned.split(separator: ":")
+        guard parts.count == 2,
+              let row = Int(parts[0]),
+              let column = Int(parts[1]),
+              row > 0,
+              column > 0 else {
+            return nil
+        }
+        return (row, column)
+    }
+
+    private func clampX(_ value: Double) -> CGFloat {
+        CGFloat(min(max(value, 0.10), 0.90))
+    }
+
+    private func clampY(_ value: Double) -> CGFloat {
+        CGFloat(min(max(value, 0.13), 0.87))
+    }
+
+    private func cleanedText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private struct PlayerBubbleView: View {
+    let playerName: String
+    let number: Int?
+    let photoURL: URL?
+
+    var body: some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color(hex: 0x344B7D), Color(hex: 0x1E2C56)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Circle()
+                        .stroke(Color.white.opacity(0.28), lineWidth: 0.9)
+
+                    if let photoURL {
+                        CachedRemoteImage(url: photoURL, contentMode: .fill) {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 14, weight: .black))
+                                .foregroundStyle(.white.opacity(0.88))
+                        }
+                        .frame(width: 38, height: 38)
+                        .clipShape(Circle())
+                    } else {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 14, weight: .black))
+                            .foregroundStyle(.white.opacity(0.88))
+                    }
+                }
+                .frame(width: 42, height: 42)
+                .shadow(color: Color.black.opacity(0.18), radius: 6, x: 0, y: 3)
+
+                if let number {
+                    Text("\(number)")
+                        .font(.system(size: 9, weight: .black))
+                        .foregroundStyle(.black.opacity(0.88))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2)
+                        .background(
+                            Capsule()
+                                .fill(Color(hex: 0xD9FF66))
+                        )
+                        .offset(x: 8, y: -7)
+                }
+            }
+
+            Text(playerName)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundStyle(.white.opacity(0.95))
+                .lineLimit(1)
+                .minimumScaleFactor(0.65)
+                .frame(width: 78)
+        }
+        .frame(width: 80)
+        .environment(\.layoutDirection, .leftToRight)
+    }
+}
+
+private struct LineupPitchPlottedPlayer: Identifiable {
+    let id: String
+    let player: FixtureLineupPlayer
+    let x: CGFloat
+    let y: CGFloat
+}
+
+private struct LineupPitchPoint {
+    let x: Double
+    let y: Double
+}
+
+private struct MatchTeamVisualSlot {
+    let name: String
+    let logoURL: URL?
+    let score: String
+}
+
+private struct MatchCardViewData {
+    let leadingTeam: MatchTeamVisualSlot
+    let trailingTeam: MatchTeamVisualSlot
+    let leadingScore: String
+    let trailingScore: String
 }
 
 private struct GuideView: View {
@@ -14370,7 +17365,6 @@ private struct CompetitionsView: View {
     private func loadChampionsLeagueData(force: Bool) async {
         if loading { return }
         if !force && !championsTable.isEmpty { return }
-        let hasSportsDBKey = configuredSportsDBAPIKey() != nil
 
         await MainActor.run {
             loading = true

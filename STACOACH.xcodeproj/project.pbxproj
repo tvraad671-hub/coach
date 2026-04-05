@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		C1A1B2C42F5A000100000001 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = C1A1B2C62F5A000100000001 /* Supabase */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		C13454702F4A24EC00BCC20C /* STACOACH.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = STACOACH.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C1A1B2C32F5A000100000001 /* Config.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -36,6 +41,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C1A1B2C42F5A000100000001 /* Supabase in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -45,6 +51,7 @@
 		C13454672F4A24EC00BCC20C = {
 			isa = PBXGroup;
 			children = (
+				C1A1B2C32F5A000100000001 /* Config.xcconfig */,
 				C13454722F4A24EC00BCC20C /* coach */,
 				C13454712F4A24EC00BCC20C /* Products */,
 			);
@@ -78,6 +85,7 @@
 			);
 			name = STACOACH;
 			packageProductDependencies = (
+				C1A1B2C62F5A000100000001 /* Supabase */,
 			);
 			productName = coach;
 			productReference = C13454702F4A24EC00BCC20C /* STACOACH.app */;
@@ -107,6 +115,9 @@
 			);
 			mainGroup = C13454672F4A24EC00BCC20C;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				C1A1B2C52F5A000100000001 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = C13454712F4A24EC00BCC20C /* Products */;
 			projectDirPath = "";
@@ -140,6 +151,7 @@
 /* Begin XCBuildConfiguration section */
 		C134547F2F4A24EC00BCC20C /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C1A1B2C32F5A000100000001 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -178,6 +190,7 @@
 		};
 		C13454802F4A24EC00BCC20C /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C1A1B2C32F5A000100000001 /* Config.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -357,6 +370,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		C1A1B2C52F5A000100000001 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/supabase/supabase-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.43.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		C1A1B2C62F5A000100000001 /* Supabase */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C1A1B2C52F5A000100000001 /* XCRemoteSwiftPackageReference "supabase-swift" */;
+			productName = Supabase;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = C13454682F4A24EC00BCC20C /* Project object */;
 }

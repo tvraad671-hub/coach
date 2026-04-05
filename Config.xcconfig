@@ -1,0 +1,7 @@
+// Optional build-time config for API-Football
+FOOTBALL_API_BASE_URL = https://v3.football.api-sports.io
+FOOTBALL_API_KEY =
+
+// Supabase (set these in local env or override via Secrets.plist / Info.plist)
+SUPABASE_URL = https://ygroswcrdnsvi...supabase.co
+SUPABASE_ANON_KEY = YOUR_SUPABASE_PUBLISHABLE_KEY
